@@ -33,7 +33,7 @@ import (
 	"github.com/koordinator-sh/koord-queue/pkg/controller"
 	"github.com/koordinator-sh/koord-queue/pkg/utils"
 	"github.com/koordinator-sh/koord-queue/pkg/visibility"
-	"gomodules.xyz/jsonpatch/v2"
+	jsonpatch "gomodules.xyz/jsonpatch/v2"
 
 	kueueversioned "sigs.k8s.io/kueue/client-go/clientset/versioned"
 	kueue "sigs.k8s.io/kueue/client-go/informers/externalversions"

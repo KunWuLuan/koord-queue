@@ -1,5 +1,11 @@
+version: "2"
+
+linters:
+  exclusions:
+    paths:
+      - pkg/queue/heap/heap.go
+      - pkg/queue/heap/heap_test.go
+      - pkg/queue/multischedulingqueue/multi_scheduling_queue.go
+
 run:
-  skip-files:
-    - pkg/queue/heap/heap.go
-    - pkg/queue/heap/heap_test.go
-    - pkg/queue/multischedulingqueue/multi_scheduling_queue.go
+  timeout: 10m
