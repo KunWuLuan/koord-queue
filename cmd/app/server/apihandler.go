@@ -59,7 +59,9 @@ func createListener() (net.Listener, int, error) {
 	// get port
 	tcpAddr, ok := ln.Addr().(*net.TCPAddr)
 	if !ok {
-		ln.Close()
+		if err := ln.Close(); err != nil {
+			return nil, 0, fmt.Errorf("failed to close listener: %v", err)
+		}
 		return nil, 0, fmt.Errorf("invalid listen address: %q", ln.Addr().String())
 	}
 
@@ -82,7 +84,9 @@ func runServer(
 		defer close(stoppedCh)
 		<-stopCh
 		ctx, cancel := context.WithTimeout(context.Background(), shutDownTimeout)
-		server.Shutdown(ctx)
+		if err := server.Shutdown(ctx); err != nil {
+			klog.Errorf("failed to shutdown server: %v", err)
+		}
 		cancel()
 	}()
 

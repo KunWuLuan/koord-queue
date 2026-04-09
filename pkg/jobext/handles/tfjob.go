@@ -403,7 +403,7 @@ func (j *TfJob) Resume(ctx context.Context, obj client.Object, cli client.Client
 
 func (j *TfJob) GetJobStatus(ctx context.Context, obj client.Object, client client.Client) (framework.JobStatus, time.Time) {
 	job := obj.(*tfjobv1.TFJob)
-	var running, queuing bool = false, false
+	var running, queuing = false, false
 	var runningTransTime, queuingTransTime time.Time
 	for _, cond := range job.Status.Conditions {
 		if cond.Type == commonv1.JobSucceeded && cond.Status == v1.ConditionTrue {
@@ -468,8 +468,8 @@ func NewTfJobReconciler(cli client.Client, config *rest.Config, scheme *runtime.
 	if err != nil {
 		log.Fatalf("failed to parse args for tfjob extension, content:\n%v\n err: %v", args, err)
 	}
-	var rt time.Duration = 0
-	var bt time.Duration = time.Minute
+	var rt time.Duration
+	var bt = time.Minute
 	if op.RunningTimeout != nil {
 		rt = *op.RunningTimeout
 	}

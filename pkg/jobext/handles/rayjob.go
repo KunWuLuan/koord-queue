@@ -162,8 +162,8 @@ func (j *RayJob) Priority(ctx context.Context, obj client.Object) (string, *int3
 
 func (j *RayJob) Enqueue(ctx context.Context, obj client.Object, cli client.Client) error {
 	job := obj.(*rayv1.RayJob)
-	job.TypeMeta.APIVersion = rayv1.GroupVersion.String()
-	job.TypeMeta.Kind = "RayJob"
+	job.APIVersion = rayv1.GroupVersion.String()
+	job.Kind = "RayJob"
 	if job.Annotations["koord-queue/job-enqueue-timestamp"] != "" {
 		return nil
 	}
@@ -188,8 +188,8 @@ func (j *RayJob) Enqueue(ctx context.Context, obj client.Object, cli client.Clie
 
 func (j *RayJob) Suspend(ctx context.Context, obj client.Object, cli client.Client) error {
 	job := obj.(*rayv1.RayJob)
-	job.TypeMeta.APIVersion = rayv1.GroupVersion.String()
-	job.TypeMeta.Kind = "RayJob"
+	job.APIVersion = rayv1.GroupVersion.String()
+	job.Kind = "RayJob"
 	if job.Spec.Suspend {
 		return nil
 	}
@@ -202,8 +202,8 @@ func (j *RayJob) Suspend(ctx context.Context, obj client.Object, cli client.Clie
 
 func (j *RayJob) Resume(ctx context.Context, obj client.Object, cli client.Client) error {
 	job := obj.(*rayv1.RayJob)
-	job.TypeMeta.APIVersion = rayv1.GroupVersion.String()
-	job.TypeMeta.Kind = "RayJob"
+	job.APIVersion = rayv1.GroupVersion.String()
+	job.Kind = "RayJob"
 	if !job.Spec.Suspend {
 		return nil
 	}
@@ -529,7 +529,7 @@ func NewRayJobReconciler(cli client.Client, config *rest.Config, scheme *runtime
 				}
 				return pods, nil
 			}}
-		rayv1.AddToScheme(scheme)
+		_ = rayv1.AddToScheme(scheme)
 		extension = framework.NewGenericJobExtensionWithJob(j, j.ManagedByQueue)
 	} else {
 		j := &RayJobV1alpha1{
@@ -559,7 +559,7 @@ func NewRayJobReconciler(cli client.Client, config *rest.Config, scheme *runtime
 				}
 				return pods, nil
 			}}
-		rayv1alpha1.AddToScheme(scheme)
+		_ = rayv1alpha1.AddToScheme(scheme)
 		extension = framework.NewGenericJobExtensionWithJob(j, j.ManagedByQueue)
 	}
 	return framework.NewJobHandle(0, 0, extension, false)

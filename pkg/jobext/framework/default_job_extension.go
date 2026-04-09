@@ -61,7 +61,7 @@ func (d *GenericJobExtensionImpl) OnQueueUnitBackoffTimeout(ctx context.Context,
 
 func (d *GenericJobExtensionImpl) GetRelatedQueueUnit(ctx context.Context, obj client.Object, client client.Client) (*v1alpha1.QueueUnit, error) {
 	var qu = &v1alpha1.QueueUnit{}
-	suffix := d.GenericJob.QueueUnitSuffix()
+	suffix := d.QueueUnitSuffix()
 	if suffix != "" {
 		suffix = "-" + suffix
 	}

@@ -177,13 +177,13 @@ func (c *ContainerWrapper) Image(image string) *ContainerWrapper {
 
 // HostPort sets `hostPort` as the host port of the inner Container.
 func (c *ContainerWrapper) HostPort(hostPort int32) *ContainerWrapper {
-	c.Container.Ports = []v1.ContainerPort{{HostPort: hostPort}}
+	c.Ports = []v1.ContainerPort{{HostPort: hostPort}}
 	return c
 }
 
 // ContainerPort sets `ports` as the ports of the inner Container.
 func (c *ContainerWrapper) ContainerPort(ports []v1.ContainerPort) *ContainerWrapper {
-	c.Container.Ports = ports
+	c.Ports = ports
 	return c
 }
 
@@ -309,7 +309,7 @@ func (p *PodWrapper) Name(s string) *PodWrapper {
 
 // Name sets `s` as the name of the inner pod.
 func (p *PodWrapper) HostNetwork(h bool) *PodWrapper {
-	p.Pod.Spec.HostNetwork = h
+	p.Spec.HostNetwork = h
 	return p
 }
 

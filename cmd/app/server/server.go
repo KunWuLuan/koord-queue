@@ -79,7 +79,7 @@ func loadConfig(data []byte) (*config.KoordQueueConfiguration, error) {
 		// because the field will be cleared later by API machinery during
 		// conversion. See KoordQueueConfiguration internal type definition for
 		// more details.
-		cfgObj.TypeMeta.APIVersion = gvk.GroupVersion().String()
+		cfgObj.APIVersion = gvk.GroupVersion().String()
 		return cfgObj, nil
 	}
 	return nil, fmt.Errorf("couldn't decode as KubeSchedulerConfiguration, got %s: ", gvk)

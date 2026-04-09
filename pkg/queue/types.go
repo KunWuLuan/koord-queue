@@ -204,14 +204,16 @@ func (q *Queue) Sync(newQueue *v1alpha1.Queue) error {
 
 		argsStr := q.queue.Annotations[queuepolicies.QueueArgsAnnotationKey]
 		args := make(map[string]string)
-		yaml.Unmarshal([]byte(argsStr), args)
+		_ = yaml.Unmarshal([]byte(argsStr), args)
 
 		q.queueImpl.Close()
 
 		q.queueImpl, err = CreateSchedulingQueue(newQueue.Name, string(newQueue.Spec.QueuePolicy), newQueue, q.fw, q.queueUnitLister, args, items...)
 
 		for _, item := range items {
-			q.queueImpl.AddQueueUnitInfo(item)
+			if _, err := q.queueImpl.AddQueueUnitInfo(item); err != nil {
+				klog.ErrorS(err, "failed to add queueUnitInfo during queue sync", "queue", q.name)
+			}
 		}
 	}
 	q.policy = string(newQueue.Spec.QueuePolicy)

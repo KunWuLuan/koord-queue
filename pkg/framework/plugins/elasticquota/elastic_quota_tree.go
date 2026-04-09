@@ -252,11 +252,12 @@ func convertMaxToReadable(rname v1.ResourceName, originMax *resource.Quantity, o
 	}
 	scaledmaxF64 := float64(originMaxInt64) * oversellrate
 	var scaledmax *resource.Quantity
-	if rname == v1.ResourceCPU {
+	switch rname {
+	case v1.ResourceCPU:
 		scaledmax = resource.NewMilliQuantity(int64(scaledmaxF64), resource.DecimalSI)
-	} else if rname == v1.ResourceMemory {
+	case v1.ResourceMemory:
 		scaledmax = resource.NewQuantity(int64(scaledmaxF64), resource.BinarySI)
-	} else {
+	default:
 		scaledmax = resource.NewQuantity(int64(scaledmaxF64), resource.DecimalSI)
 	}
 	return scaledmax

@@ -32,7 +32,7 @@ func NewFrameworkForTesting() (framework.Framework, map[string]framework.Plugin,
 	informers := kubeinformers.NewSharedInformerFactory(fakeClient, time.Second*30)
 	versionedclient := versionedfake.NewSimpleClientset()
 	versionedInformers := externalversions.NewSharedInformerFactory(versionedclient, 0)
-	versionedInformers.Scheduling().V1alpha1().Queues().Informer().AddIndexers(cache.Indexers{
+	_ = versionedInformers.Scheduling().V1alpha1().Queues().Informer().AddIndexers(cache.Indexers{
 		utils.AnnotationQuotaFullName: func(obj interface{}) ([]string, error) {
 			qu, ok := obj.(*v1alpha1.Queue)
 			if !ok {

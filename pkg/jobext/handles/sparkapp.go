@@ -410,10 +410,10 @@ func (j *SparkApplication) Enqueue(ctx context.Context, obj client.Object, cli c
 	new := job.DeepCopy()
 	new.ObjectMeta.Annotations = util.MapCopy(job.ObjectMeta.Annotations)
 	new.ObjectMeta.Annotations["koord-queue/job-enqueue-timestamp"] = time.Now().String()
-	if len(new.Spec.Driver.SparkPodSpec.Labels) == 0 {
-		new.Spec.Driver.SparkPodSpec.Labels = make(map[string]string)
+	if len(new.Spec.Driver.Labels) == 0 {
+		new.Spec.Driver.Labels = make(map[string]string)
 	}
-	new.Spec.Driver.SparkPodSpec.Labels[util.SchedulerAdmissionLabelKey] = "false"
+	new.Spec.Driver.Labels[util.SchedulerAdmissionLabelKey] = "false"
 	if len(new.Spec.Driver.SparkPodSpec.Annotations) == 0 {
 		new.Spec.Driver.SparkPodSpec.Annotations = make(map[string]string)
 	}

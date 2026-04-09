@@ -104,7 +104,7 @@ func (j *PytorchJob) Reservation(ctx context.Context, obj client.Object) ([]koor
 		// case util.AIMASTERROLENAME:
 		// 	// TODO:
 		// 	labelSelector.MatchLabels = map[string]string{
-		// 		"job-name":             strings.Replace(job.Name, "/", "-", -1),
+		// 		"job-name":             strings.ReplaceAll(job.Name, "/", "-"),
 		// 		"pytorch-replica-type": util.AIMASTERROLENAME,
 		// 	}
 		case pytorchv1.PyTorchReplicaTypeMaster:
@@ -117,12 +117,12 @@ func (j *PytorchJob) Reservation(ctx context.Context, obj client.Object) ([]koor
 				{
 					Key:      "job-name",
 					Operator: metav1.LabelSelectorOpIn,
-					Values:   []string{strings.Replace(job.Name, "/", "-", -1)},
+					Values:   []string{strings.ReplaceAll(job.Name, "/", "-")},
 				},
 			}
 			// TODO:
 			// labelSelector.MatchLabels = map[string]string{
-			// 	"job-name":             strings.Replace(job.Name, "/", "-", -1),
+			// 	"job-name":             strings.ReplaceAll(job.Name, "/", "-"),
 			// 	"pytorch-replica-type": "master",
 			// }
 		case pytorchv1.PyTorchReplicaTypeWorker:
@@ -135,12 +135,12 @@ func (j *PytorchJob) Reservation(ctx context.Context, obj client.Object) ([]koor
 				{
 					Key:      "job-name",
 					Operator: metav1.LabelSelectorOpIn,
-					Values:   []string{strings.Replace(job.Name, "/", "-", -1)},
+					Values:   []string{strings.ReplaceAll(job.Name, "/", "-")},
 				},
 			}
 			// TODO:
 			// labelSelector.MatchLabels = map[string]string{
-			// 	"job-name":             strings.Replace(job.Name, "/", "-", -1),
+			// 	"job-name":             strings.ReplaceAll(job.Name, "/", "-"),
 			// 	"pytorch-replica-type": "worker",
 			// }
 		}
@@ -349,7 +349,7 @@ func (r *PytorchJob) GenLabels(jobName string) map[string]string {
 	groupName := "kubeflow.org"
 	return map[string]string{
 		"group-name": groupName,
-		"job-name":   strings.Replace(jobName, "/", "-", -1),
+		"job-name":   strings.ReplaceAll(jobName, "/", "-"),
 	}
 }
 
@@ -513,7 +513,7 @@ func (j *PytorchJob) Resume(ctx context.Context, obj client.Object, cli client.C
 	if os.Getenv("PAI_ENV") != "" {
 		delete(new.Annotations, QueueAnnotation)
 	} else {
-		new.ObjectMeta.Annotations[QueueAnnotation] = "false"
+		new.Annotations[QueueAnnotation] = "false"
 	}
 	new.Annotations["koord-queue/job-dequeue-timestamp"] = time.Now().String()
 	return cli.Patch(ctx, new, client.MergeFrom(old))
@@ -521,7 +521,7 @@ func (j *PytorchJob) Resume(ctx context.Context, obj client.Object, cli client.C
 
 func (j *PytorchJob) GetJobStatus(ctx context.Context, obj client.Object, client client.Client) (framework.JobStatus, time.Time) {
 	job := obj.(*pytorchv1.PyTorchJob)
-	var running, queuing bool = false, false
+	var running, queuing = false, false
 	var runningTransTime, queuingTransTime time.Time
 	for _, cond := range job.Status.Conditions {
 		if cond.Type == commonv1.JobSucceeded && cond.Status == v1.ConditionTrue {
@@ -573,7 +573,7 @@ func NewPytorchJobReconciler(cli client.Client, config *rest.Config, scheme *run
 		podControl:     control.RealPodControl{KubeClient: c, Recorder: record.NewBroadcaster().NewRecorder(scheme, v1.EventSource{Component: "pytorch-opeartor-extension"})},
 		svcControl:     control.RealServiceControl{KubeClient: c, Recorder: record.NewBroadcaster().NewRecorder(scheme, v1.EventSource{Component: "pytorch-opeartor-extension"})},
 	}
-	pytorchv1.AddToScheme(scheme)
+	_ = pytorchv1.AddToScheme(scheme)
 	extension := framework.NewGenericJobExtensionWithJob(j, j.ManagedByQueue)
 
 	op := tfOption{}
@@ -581,8 +581,8 @@ func NewPytorchJobReconciler(cli client.Client, config *rest.Config, scheme *run
 	if err != nil {
 		log.Fatalf("failed to parse args for pytorchjob extension, content:%v", args)
 	}
-	var rt time.Duration = 0
-	var bt time.Duration = time.Minute
+	var rt time.Duration
+	var bt = time.Minute
 	if op.RunningTimeout != nil {
 		rt = *op.RunningTimeout
 	}
