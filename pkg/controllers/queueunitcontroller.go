@@ -43,7 +43,7 @@ func NewQueueUnitController(workers int64, enableStrictDequeueMode bool, cli ver
 
 	quc.ControllerBaseImpl = NewControllerBase(int(workers), logger, []cache.InformerSynced{informer.HasSynced}, quc.reconcile, workqueue.DefaultTypedItemBasedRateLimiter[string]())
 
-	informer.AddEventHandler(cache.FilteringResourceEventHandler{
+	_, _ = informer.AddEventHandler(cache.FilteringResourceEventHandler{
 		FilterFunc: func(obj interface{}) bool {
 			qu, ok := obj.(*v1alpha1.QueueUnit)
 			if !ok {

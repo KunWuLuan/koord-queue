@@ -502,7 +502,7 @@ func NewFramework(r Registry, config *rest.Config, kubeConfigPath string,
 		if f.queueUnitMappingPlugin != nil {
 			f.queueUnitMappingPlugin.AddEventHandler(queueFactory.Scheduling().V1alpha1().Queues(), f)
 		}
-		queueFactory.Scheduling().V1alpha1().QueueUnits().Informer().AddEventHandler(
+		_, _ = queueFactory.Scheduling().V1alpha1().QueueUnits().Informer().AddEventHandler(
 			cache.ResourceEventHandlerFuncs{
 				AddFunc:    f.onQueueUnitAddOrUpdate,
 				UpdateFunc: func(_, newObj interface{}) { f.onQueueUnitAddOrUpdate(newObj) },

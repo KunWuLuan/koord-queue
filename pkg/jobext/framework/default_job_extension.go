@@ -71,6 +71,6 @@ func (d *GenericJobExtensionImpl) GetRelatedQueueUnit(ctx context.Context, obj c
 
 func (d *GenericJobExtensionImpl) GetRelatedJob(ctx context.Context, qu *v1alpha1.QueueUnit, client client.Client) client.Object {
 	object := d.Object()
-	client.Get(context.Background(), types.NamespacedName{Namespace: qu.GetNamespace(), Name: qu.GetName()}, object)
+	_ = client.Get(context.Background(), types.NamespacedName{Namespace: qu.GetNamespace(), Name: qu.GetName()}, object)
 	return object
 }

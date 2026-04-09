@@ -86,7 +86,7 @@ func New(_ runtime.Object, handle framework.Handle) (framework.Plugin, error) {
 }
 
 func (eq *ElasticQuota) initHandler() {
-	eq.informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	_, _ = eq.informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    eq.Add,
 		UpdateFunc: eq.Update,
 		DeleteFunc: eq.Delete,

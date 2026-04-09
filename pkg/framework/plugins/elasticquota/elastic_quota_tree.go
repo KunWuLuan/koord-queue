@@ -893,7 +893,7 @@ func sendSyncQueueEvent(ch chan int) {
 func (eq *ElasticQuota) buildEventHandlers(elasticTreeQuotaInformer cache.SharedIndexInformer,
 	namespaceInformer cache.SharedIndexInformer,
 	queueInformer, queueunitInformer cache.SharedIndexInformer) {
-	elasticTreeQuotaInformer.AddEventHandler(
+	_, _ = elasticTreeQuotaInformer.AddEventHandler(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: func(obj interface{}) bool {
 				switch t := obj.(type) {
@@ -915,7 +915,7 @@ func (eq *ElasticQuota) buildEventHandlers(elasticTreeQuotaInformer cache.Shared
 			},
 		})
 
-	namespaceInformer.AddEventHandler(cache.ResourceEventHandlerDetailedFuncs{
+	_, _ = namespaceInformer.AddEventHandler(cache.ResourceEventHandlerDetailedFuncs{
 		AddFunc: func(obj interface{}, isInInitialList bool) {
 			ns, ok := obj.(*v1.Namespace)
 			if !ok {
@@ -957,7 +957,7 @@ func (eq *ElasticQuota) buildEventHandlers(elasticTreeQuotaInformer cache.Shared
 		},
 	})
 
-	queueInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	_, _ = queueInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			queue, ok := obj.(*v1alpha1.Queue)
 			if !ok {
@@ -1023,7 +1023,7 @@ func (eq *ElasticQuota) buildEventHandlers(elasticTreeQuotaInformer cache.Shared
 		eq.allQueueUnitsMapping[unit.UID] = quota.Name
 		eq.queueUnitsSnapshot[quota.Name].Insert(types.NamespacedName{Namespace: unit.Namespace, Name: unit.Name})
 	}
-	queueunitInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	_, _ = queueunitInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			unit, ok := obj.(*v1alpha1.QueueUnit)
 			if !ok {

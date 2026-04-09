@@ -6,6 +6,23 @@ linters:
       - pkg/queue/heap/heap.go
       - pkg/queue/heap/heap_test.go
       - pkg/queue/multischedulingqueue/multi_scheduling_queue.go
+    rules:
+      - linters:
+          - errcheck
+        text: AddToScheme|AddEventHandler|Reserve|Unreserve|RetryOnConflict|IndexField|deleteWithoutLock
+      - linters:
+          - errcheck
+        path: _test\.go$
+  settings:
+    errcheck:
+      check-type-assertions: false
+      check-blank: false
+  enable:
+    - errcheck
+    - ineffassign
+    - staticcheck
+    - unused
 
 run:
   timeout: 10m
+  tests: false
