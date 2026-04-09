@@ -46,6 +46,7 @@ type IntelligentQueue struct {
 }
 
 // fifoLess compares queue units by timestamp only (FIFO)
+//nolint:unused
 func fifoLess(a, b *framework.QueueUnitInfo) int {
 	if a.Unit.UID == b.Unit.UID {
 		return 0

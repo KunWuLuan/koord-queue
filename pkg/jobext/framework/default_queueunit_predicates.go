@@ -7,7 +7,7 @@ import (
 )
 
 type UpdatePredicate struct {
-	d *GenericJobReconciler
+	d *GenericJobReconciler //nolint:unused
 }
 
 // Create returns true if the Create event should be processed

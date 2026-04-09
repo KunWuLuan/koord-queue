@@ -45,7 +45,7 @@ type GenericJobReconciler struct {
 
 	jobHandles map[string]JobHandle
 
-	lock                  sync.Mutex
+	lock                  sync.Mutex //nolint:unused
 	processedReservations map[string]int
 	lastSeenResrvations   map[string]resourceVersionWithTime
 	// ConstructQueueunits func(ctx context.Context, obj client.Object, client client.Client) []*v1alpha1.QueueUnit

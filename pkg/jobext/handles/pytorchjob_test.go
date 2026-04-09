@@ -736,6 +736,7 @@ var _ = Describe("PytorchJob Controller", func() {
 				},
 			}
 
+			Expect(fakeClient.Create(ctx, job)).To(Succeed())
 			err := pytorchJobController.Resume(ctx, job, fakeClient)
 			Expect(err).NotTo(HaveOccurred())
 		})

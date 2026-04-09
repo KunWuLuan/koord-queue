@@ -33,6 +33,7 @@ import (
 // queue units to run.
 //
 // q.lock should be obtained outside
+//nolint:unused
 func (q *PriorityQueue) tryPreempt() {
 	if len(q.assumed) == 0 {
 		return
@@ -111,6 +112,7 @@ func (q *PriorityQueue) preemptQueueUnits(preempted []*framework.QueueUnitInfo, 
 }
 
 // deprecated
+//nolint:unused
 func (q *PriorityQueue) findQueueUnitsToPreempt(assumed []*framework.QueueUnitInfo) ([]string, []*framework.QueueUnitInfo) {
 	releasedResource := v1.ResourceList{}
 	preemptorResource := v1.ResourceList{}

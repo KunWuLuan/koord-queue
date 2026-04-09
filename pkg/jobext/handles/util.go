@@ -25,6 +25,7 @@ func RecheckDeletionTimestamp(getObject func() (metav1.Object, error)) func() er
 	}
 }
 
+//nolint:unused
 func setK8sCondition(old []metav1.Condition, ctype string, status metav1.ConditionStatus, msg string, reason string) (bool, []metav1.Condition) {
 	for i, condition := range old {
 		now := metav1.Now()

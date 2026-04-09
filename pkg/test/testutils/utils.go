@@ -19,7 +19,6 @@ import (
 	"github.com/koordinator-sh/koord-queue/pkg/utils"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kuberuntime "k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/informers"
 	kubeinformers "k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/rest"
@@ -83,7 +82,7 @@ func NewFakeFrameworkHandleWithQueueUnit(objects ...kuberuntime.Object) framewor
 
 type FakeHandle struct {
 	ver          externalversions.SharedInformerFactory
-	in           informers.SharedInformerFactory
+	in           kubeinformers.SharedInformerFactory
 	fakeClient   *versionedfake.Clientset
 	fakeRecorder record.EventRecorderLogger
 }
@@ -97,7 +96,7 @@ func (f *FakeHandle) GetQueueUnitQuotaName(*v1alpha1.QueueUnit) ([]string, error
 }
 
 func (f *FakeHandle) QueueInformerFactory() externalversions.SharedInformerFactory { return f.ver }
-func (f *FakeHandle) SharedInformerFactory() informers.SharedInformerFactory       { return f.in }
+func (f *FakeHandle) SharedInformerFactory() kubeinformers.SharedInformerFactory       { return f.in }
 func (f *FakeHandle) KubeConfigPath() string                                       { return "" }
 func (f *FakeHandle) QueueUnitClient() versioned.Interface                         { return f.fakeClient }
 func (f *FakeHandle) OversellRate() float64                                        { return 1 }

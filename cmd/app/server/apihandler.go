@@ -40,7 +40,7 @@ func ServeAPIHandlers(ctx context.Context, controller *controller.Controller) {
 		Handler:        engine,
 		MaxHeaderBytes: 1 << 20,
 	}
-	runServer(server, listener, 0, ctx.Done())
+	_, _ = runServer(server, listener, 0, ctx.Done())
 }
 
 func createListener() (net.Listener, int, error) {

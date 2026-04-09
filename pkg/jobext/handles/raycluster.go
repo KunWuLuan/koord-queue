@@ -185,7 +185,7 @@ func (j *RayCluster) Resume(ctx context.Context, obj client.Object, cli client.C
 	old := &rayv1.RayCluster{TypeMeta: job.TypeMeta, ObjectMeta: job.ObjectMeta, Spec: job.Spec, Status: job.Status}
 	new := &rayv1.RayCluster{TypeMeta: job.TypeMeta, ObjectMeta: job.ObjectMeta, Spec: job.Spec, Status: job.Status}
 	new.Spec.Suspend = ptr.To(false)
-	new.ObjectMeta.Annotations = util.MapCopy(job.ObjectMeta.Annotations)
+	new.Annotations = util.MapCopy(job.Annotations)
 	new.Annotations["koord-queue/job-dequeue-timestamp"] = time.Now().String()
 	return cli.Patch(ctx, new, client.MergeFrom(old))
 }

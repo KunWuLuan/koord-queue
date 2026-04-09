@@ -230,7 +230,7 @@ func (jc *TfJob) GenLabels(jobName string) map[string]string {
 	groupName := "kubeflow.org"
 	return map[string]string{
 		"group-name": groupName,
-		"job-name":   strings.Replace(jobName, "/", "-", -1),
+		"job-name":   strings.ReplaceAll(jobName, "/", "-"),
 	}
 }
 
@@ -394,7 +394,7 @@ func (j *TfJob) Resume(ctx context.Context, obj client.Object, cli client.Client
 	if os.Getenv("PAI_ENV") != "" {
 		delete(new.Annotations, QueueAnnotation)
 	} else {
-		new.ObjectMeta.Annotations[QueueAnnotation] = "false"
+		new.Annotations[QueueAnnotation] = "false"
 	}
 	new.Annotations["koord-queue/job-dequeue-timestamp"] = time.Now().String()
 	patch := client.MergeFrom(old)
@@ -460,7 +460,7 @@ func NewTfJobReconciler(cli client.Client, config *rest.Config, scheme *runtime.
 		podControl:     control.RealPodControl{KubeClient: c, Recorder: record.NewBroadcaster().NewRecorder(scheme, v1.EventSource{Component: "tf-opeartor-extension"})},
 		svcControl:     control.RealServiceControl{KubeClient: c, Recorder: record.NewBroadcaster().NewRecorder(scheme, v1.EventSource{Component: "tf-opeartor-extension"})},
 	}
-	tfjobv1.AddToScheme(scheme)
+	_ = tfjobv1.AddToScheme(scheme)
 	extension := framework.NewGenericJobExtensionWithJob(j, j.ManagedByQueue)
 
 	op := tfOption{}
@@ -512,12 +512,12 @@ func (j *TfJob) Reservation(ctx context.Context, obj client.Object) ([]koordinat
 				{
 					Key:      "job-name",
 					Operator: metav1.LabelSelectorOpIn,
-					Values:   []string{strings.Replace(job.Name, "/", "-", -1)},
+					Values:   []string{strings.ReplaceAll(job.Name, "/", "-")},
 				},
 			}
 			// TODO:
 			// labelSelector.MatchLabels = map[string]string{
-			// 	"job-name":             strings.Replace(job.Name, "/", "-", -1),
+			// 	"job-name":             strings.ReplaceAll(job.Name, "/", "-"),
 			// 	"pytorch-replica-type": "worker",
 			// }
 		}
