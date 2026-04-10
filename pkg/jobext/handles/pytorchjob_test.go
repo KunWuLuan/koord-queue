@@ -450,7 +450,7 @@ var _ = Describe("PytorchJob Controller", func() {
 						metav1.LabelSelectorRequirement{
 							Key:      "pytorch-replica-type",
 							Operator: metav1.LabelSelectorOpNotIn,
-							Values:   []string{"aimaster"},
+							Values:   []string{"master"},
 						}))
 					Expect(resv.Spec.Owners[0].LabelSelector.MatchExpressions).To(ContainElement(
 						metav1.LabelSelectorRequirement{
@@ -464,7 +464,7 @@ var _ = Describe("PytorchJob Controller", func() {
 						metav1.LabelSelectorRequirement{
 							Key:      "pytorch-replica-type",
 							Operator: metav1.LabelSelectorOpNotIn,
-							Values:   []string{"aimaster"},
+							Values:   []string{"master"},
 						}))
 					Expect(resv.Spec.Owners[0].LabelSelector.MatchExpressions).To(ContainElement(
 						metav1.LabelSelectorRequirement{

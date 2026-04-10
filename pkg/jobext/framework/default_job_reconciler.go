@@ -3,7 +3,6 @@ package framework
 import (
 	"context"
 	"strings"
-	"sync"
 	"time"
 
 	koordinatorschedulerv1alpha1 "github.com/koordinator-sh/apis/scheduling/v1alpha1"
@@ -45,7 +44,6 @@ type GenericJobReconciler struct {
 
 	jobHandles map[string]JobHandle
 
-	lock                  sync.Mutex //nolint:unused
 	processedReservations map[string]int
 	lastSeenResrvations   map[string]resourceVersionWithTime
 	// ConstructQueueunits func(ctx context.Context, obj client.Object, client client.Client) []*v1alpha1.QueueUnit

@@ -123,7 +123,7 @@ func (j *TfJob) Priority(ctx context.Context, obj client.Object) (string, *int32
 	var priorityClassName string
 	var priority *int32
 	for role := range job.Spec.TFReplicaSpecs {
-		if r := strings.ToLower(string(role)); r == util.AIMASTERROLENAME {
+		if role == tfjobv1.TFReplicaTypeMaster {
 			klog.Infof("skip search priority in role %v for job %v", role, job.Name)
 			continue
 		}
@@ -154,7 +154,7 @@ func (j *TfJob) Priority(ctx context.Context, obj client.Object) (string, *int32
 func (j *TfJob) Enqueue(ctx context.Context, obj client.Object, cli client.Client) error {
 	job := obj.(*tfjobv1.TFJob)
 	for roleName, roleSpec := range job.Spec.TFReplicaSpecs {
-		if roleName == util.AIMASTERROLENAME {
+		if roleName == tfjobv1.TFReplicaTypeMaster {
 			continue
 		}
 		util.SetPodTemplateSpec(&roleSpec.Template, job.Namespace, job.Name, strings.ToLower(string(roleName)), j.QueueUnitSuffix())
@@ -198,7 +198,7 @@ func (tc *TfJob) deleteJobResources(tfjob *tfjobv1.TFJob) error {
 	pods, err := tc.GetPodsForJob(tfjob)
 	filteredPods := []*v1.Pod{}
 	for _, p := range pods {
-		if p.Labels["replica-type"] == util.AIMASTERROLENAME {
+		if p.Labels["replica-type"] == "master" {
 			continue
 		}
 		filteredPods = append(filteredPods, p)
@@ -507,7 +507,7 @@ func (j *TfJob) Reservation(ctx context.Context, obj client.Object) ([]koordinat
 				{
 					Key:      "tf-replica-type",
 					Operator: metav1.LabelSelectorOpNotIn,
-					Values:   []string{util.AIMASTERROLENAME},
+					Values:   []string{"master"},
 				},
 				{
 					Key:      "job-name",

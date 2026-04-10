@@ -101,18 +101,12 @@ func (j *PytorchJob) Reservation(ctx context.Context, obj client.Object) ([]koor
 
 		labelSelector := &metav1.LabelSelector{}
 		switch role {
-		// case util.AIMASTERROLENAME:
-		// 	// TODO:
-		// 	labelSelector.MatchLabels = map[string]string{
-		// 		"job-name":             strings.ReplaceAll(job.Name, "/", "-"),
-		// 		"pytorch-replica-type": util.AIMASTERROLENAME,
-		// 	}
 		case pytorchv1.PyTorchReplicaTypeMaster:
 			labelSelector.MatchExpressions = []metav1.LabelSelectorRequirement{
 				{
 					Key:      "pytorch-replica-type",
 					Operator: metav1.LabelSelectorOpNotIn,
-					Values:   []string{util.AIMASTERROLENAME},
+					Values:   []string{"master"},
 				},
 				{
 					Key:      "job-name",
@@ -130,7 +124,7 @@ func (j *PytorchJob) Reservation(ctx context.Context, obj client.Object) ([]koor
 				{
 					Key:      "pytorch-replica-type",
 					Operator: metav1.LabelSelectorOpNotIn,
-					Values:   []string{util.AIMASTERROLENAME},
+					Values:   []string{"master"},
 				},
 				{
 					Key:      "job-name",
@@ -227,7 +221,7 @@ func (j *PytorchJob) Priority(ctx context.Context, obj client.Object) (string, *
 	var priorityClassName string
 	var priority *int32
 	for role := range job.Spec.PyTorchReplicaSpecs {
-		if r := strings.ToLower(string(role)); r == util.AIMASTERROLENAME {
+		if role == pytorchv1.PyTorchReplicaTypeMaster {
 			klog.Infof("skip search priority in role %v for job %v", role, job.Name)
 			continue
 		}
@@ -258,7 +252,7 @@ func (j *PytorchJob) Priority(ctx context.Context, obj client.Object) (string, *
 func (j *PytorchJob) Enqueue(ctx context.Context, obj client.Object, cli client.Client) error {
 	job := obj.(*pytorchv1.PyTorchJob)
 	for roleName, roleSpec := range job.Spec.PyTorchReplicaSpecs {
-		if strings.ToLower(string(roleName)) == util.AIMASTERROLENAME {
+		if roleName == pytorchv1.PyTorchReplicaTypeMaster {
 			continue
 		}
 		util.SetPodTemplateSpec(&roleSpec.Template, job.Namespace, job.Name, strings.ToLower(string(roleName)), j.QueueUnitSuffix())
@@ -314,7 +308,7 @@ func (r *PytorchJob) deleteJobResources(pytorchjob *pytorchv1.PyTorchJob) error 
 	pods, err := r.GetPodsForJob(pytorchjob)
 	filteredPods := []*v1.Pod{}
 	for _, p := range pods {
-		if p.Labels["replica-type"] == util.AIMASTERROLENAME {
+		if p.Labels["replica-type"] == "master" {
 			continue
 		}
 		if p.Spec.NodeName != "" {
