@@ -152,10 +152,10 @@ func (j *PytorchJob) Reservation(ctx context.Context, obj client.Object) ([]koor
 		}
 		templateCopy.Namespace = job.Namespace
 		delete(templateCopy.Labels, "alibabacloud.com/schedule-admission")
-		modifyGroupLabelsOrAnnotations(templateCopy.Labels, "pod-group.scheduling.sigs.k8s.io/name", framework.Suffix)
-		modifyGroupLabelsOrAnnotations(templateCopy.Labels, "pod-group.scheduling.sigs.k8s.io", framework.Suffix)
-		modifyGroupLabelsOrAnnotations(templateCopy.Labels, "scheduling.x-k8s.io/pod-group", framework.Suffix)
-		modifyGroupLabelsOrAnnotations(templateCopy.Labels, "network-topology-job-name", framework.Suffix)
+		modifyGroupLabelsOrAnnotations(templateCopy.Labels, "pod-group.scheduling.sigs.k8s.io/name", j.QueueUnitSuffix())
+		modifyGroupLabelsOrAnnotations(templateCopy.Labels, "pod-group.scheduling.sigs.k8s.io", j.QueueUnitSuffix())
+		modifyGroupLabelsOrAnnotations(templateCopy.Labels, "scheduling.x-k8s.io/pod-group", j.QueueUnitSuffix())
+		modifyGroupLabelsOrAnnotations(templateCopy.Labels, "network-topology-job-name", j.QueueUnitSuffix())
 		for i := 0; i < replicas; i++ {
 			resv := koordinatorschedulerv1alpha1.Reservation{
 				ObjectMeta: metav1.ObjectMeta{
@@ -168,7 +168,7 @@ func (j *PytorchJob) Reservation(ctx context.Context, obj client.Object) ([]koor
 				},
 			}
 			if netName != "" {
-				resv.Labels["network-topology-job-name"] = netName + "-" + framework.Suffix
+				resv.Labels["network-topology-job-name"] = netName + "-" + j.QueueUnitSuffix()
 				resv.Labels["network-topology-job-namespace"] = netNs
 			}
 			resvs = append(resvs, resv)
@@ -258,7 +258,7 @@ func (j *PytorchJob) Priority(ctx context.Context, obj client.Object) (string, *
 func (j *PytorchJob) Enqueue(ctx context.Context, obj client.Object, cli client.Client) error {
 	job := obj.(*pytorchv1.PyTorchJob)
 	for roleName, roleSpec := range job.Spec.PyTorchReplicaSpecs {
-		if roleName == util.AIMASTERROLENAME {
+		if strings.ToLower(string(roleName)) == util.AIMASTERROLENAME {
 			continue
 		}
 		util.SetPodTemplateSpec(&roleSpec.Template, job.Namespace, job.Name, strings.ToLower(string(roleName)), j.QueueUnitSuffix())
