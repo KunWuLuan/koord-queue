@@ -8,7 +8,6 @@ import (
 	queueunitversioned "github.com/koordinator-sh/koord-queue/pkg/client/clientset/versioned"
 	clientv1alpha1 "github.com/koordinator-sh/koord-queue/pkg/client/informers/externalversions/scheduling/v1alpha1"
 	queuev1alpha1 "github.com/koordinator-sh/koord-queue/pkg/client/listers/scheduling/v1alpha1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/cache"
@@ -71,7 +70,6 @@ func New(_ runtime.Object, handle framework.Handle) (framework.Plugin, error) {
 		cache:           newElasticQuotaCache(),
 		failover:        make(chan struct{}),
 	}
-	plugin.LoadQuotaAndQueueUnits()
 	plugin.initHandler()
 
 	ctx := context.Background().Done()
@@ -82,6 +80,7 @@ func New(_ runtime.Object, handle framework.Handle) (framework.Plugin, error) {
 			return nil, fmt.Errorf("failed to wait for caches to sync %v", t.Name())
 		}
 	}
+	plugin.LoadQuotaAndQueueUnits()
 	return plugin, nil
 }
 
@@ -100,11 +99,11 @@ func (eq *ElasticQuota) initHandler() {
 // when the queue units reserved to the children, if parent is not loaded yet, the usage will not recursively add to
 // the parent.
 func (eq *ElasticQuota) LoadQuotaAndQueueUnits() {
-	quotas, err := eq.eqClient.SchedulingV1alpha1().ElasticQuotas("kube-system").List(context.Background(), metav1.ListOptions{})
+	quotas, err := eq.lister.List(labels.Everything())
 	if err != nil {
 		panic(err)
 	}
-	for _, q := range quotas.Items {
+	for _, q := range quotas {
 		quota := q.DeepCopy()
 		eq.tryCreateOrUpdateQueueCr(quota)
 		eq.cache.AddOrUpdateQuota(quota)

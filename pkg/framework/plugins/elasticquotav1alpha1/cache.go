@@ -12,6 +12,7 @@ import (
 	"github.com/koordinator-sh/koord-queue/pkg/framework"
 	"github.com/koordinator-sh/koord-queue/pkg/metrics"
 
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -220,24 +221,26 @@ func (c *cacheImpl) AddOrUpdateQuota(q *v1alpha1.ElasticQuota) {
 		c.quotas[key(q)] = info
 
 		klog.Infof("create quotaInfo success, quotaName:%v, parentName:%v, min:%v, max:%v",
-			key(q), q.Labels[ParentQuotaNameLabelKey], info.Min, info.Max)
+			key(q), getParentQuotaName(q), info.Min, info.Max)
 	} else {
 		klog.Infof("update quotaInfo success, quotaName:%v, parentName:%v, oldMin:%v, newMin:%v,"+
-			"oldMax:%v, newMax:%v", key(q), q.Labels[ParentQuotaNameLabelKey], info.Min, utils.TransResourceList(q.Spec.Min),
+			"oldMax:%v, newMax:%v", key(q), getParentQuotaName(q), info.Min, utils.TransResourceList(q.Spec.Min),
 			info.Max, utils.TransResourceList(q.Spec.Max))
 
+		// Replace entire Max/Min to avoid stale keys from previous updates
+		info.Max = make(map[v1.ResourceName]int64, len(q.Spec.Max))
 		for k, v := range q.Spec.Max {
 			info.Max[k] = v.Value()
 		}
+		info.Min = make(map[v1.ResourceName]int64, len(q.Spec.Min))
 		for k, v := range q.Spec.Min {
 			info.Min[k] = v.Value()
 		}
 		info.Quota = q
 	}
 
-	if parent, ok := info.Quota.Labels[ParentQuotaNameLabelKey]; ok {
-		c.quotaParent[key(q)] = parent
-	}
+	// Set parent, defaulting to KoordRootQuota if not specified (matching upstream behavior)
+	c.quotaParent[key(q)] = getParentQuotaName(q)
 }
 
 func (c *cacheImpl) DeleteQuota(q *v1alpha1.ElasticQuota) {

@@ -111,7 +111,8 @@ func (info *ElasticQuotaInfo) DeleteQueueUnit(currentQuota string, queueUnit *fr
 	}
 
 	delete(info.Reserved, queueUnit.Unit.UID)
-	res := utils.TransResourceList(queueUnit.Unit.Spec.Resource)
+	// Use the same resource source as AddQueueUnit to ensure consistency
+	res := utils.GetReservedResource(queueUnit.Unit).Resources
 
 	queueUnitQuota := getQuotaName(queueUnit.Unit)
 	sameQuota := queueUnitQuota == currentQuota

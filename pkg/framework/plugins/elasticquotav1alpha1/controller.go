@@ -38,7 +38,7 @@ func (ctrl *Controller) Start() {
 
 func (ctrl *Controller) syncQueueStatusWorker() {
 	queues, err := ctrl.plugin.handle.QueueInformerFactory().Scheduling().V1alpha1().Queues().
-		Lister().Queues("koord-queue").List(labels.Everything())
+		Lister().Queues(KoordQueueNamespace).List(labels.Everything())
 	if err != nil {
 		klog.V(3).ErrorS(err, "Unable to list queues in syncQueueStatusWorker")
 		return
@@ -71,7 +71,7 @@ func (ctrl *Controller) syncQueueStatus(q *queuev1.Queue, summary *ElasticQuotaD
 	}
 
 	err = framework.RetryTooManyRequests(func() error {
-		_, err := ctrl.plugin.handle.QueueUnitClient().SchedulingV1alpha1().Queues("koord-queue").
+		_, err := ctrl.plugin.handle.QueueUnitClient().SchedulingV1alpha1().Queues(KoordQueueNamespace).
 			Update(context.TODO(), newQueue, metav1.UpdateOptions{})
 		return err
 	})
