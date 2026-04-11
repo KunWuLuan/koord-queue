@@ -32,3 +32,6 @@ go.work.sum
 .vscode/
 .qoder
 .DS_Store
+
+vendor
+bin
