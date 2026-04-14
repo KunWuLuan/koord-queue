@@ -8,9 +8,11 @@ import (
 	queueunitversioned "github.com/koordinator-sh/koord-queue/pkg/client/clientset/versioned"
 	clientv1alpha1 "github.com/koordinator-sh/koord-queue/pkg/client/informers/externalversions/scheduling/v1alpha1"
 	queuev1alpha1 "github.com/koordinator-sh/koord-queue/pkg/client/listers/scheduling/v1alpha1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/cache"
+	resourcehelpers "k8s.io/component-helpers/resource"
 	"k8s.io/klog/v2"
 
 	"github.com/koordinator-sh/koord-queue/pkg/framework"
@@ -164,9 +166,34 @@ func (eq *ElasticQuota) Filter(ctx context.Context, queueUnit *framework.QueueUn
 	return framework.NewStatus(framework.Success, "", ads)
 }
 
-func (eq *ElasticQuota) Reserve(ctx context.Context, queueUnit *framework.QueueUnitInfo, _ map[string]framework.Admission) *framework.Status {
+func (eq *ElasticQuota) Reserve(ctx context.Context, queueUnit *framework.QueueUnitInfo, ads map[string]framework.Admission) *framework.Status {
 	quotaName := getQuotaName(queueUnit.Unit)
 	ResourceUsageRecord(queueUnit.Unit.Spec.Resource, metrics.QuotaUsageByNamespace, queueUnit.Unit.Namespace, 1)
+
+	// Update queueUnit's Status.Admissions with the provided ads before reserving
+	// This ensures that GetReservedResource can correctly calculate the resource usage
+	if len(ads) > 0 && len(queueUnit.Unit.Status.Admissions) == 0 {
+		queueUnit.Unit.Status.Admissions = make([]v1alpha1.Admission, 0, len(ads))
+		for name, ad := range ads {
+			// Convert framework.Admission to v1alpha1.Admission
+			// Use Spec.Resource or Spec.Request to populate Resources field
+			v1Ad := v1alpha1.Admission{
+				Name:     name,
+				Replicas: ad.Replicas,
+			}
+			// Try to get resources from PodSets if available
+			for _, ps := range queueUnit.Unit.Spec.PodSets {
+				if ps.Name == name {
+					// Calculate resources based on PodSet template and replicas
+					specRequests := resourcehelpers.PodRequests(&v1.Pod{Spec: ps.Template.Spec}, resourcehelpers.PodResourcesOptions{})
+					v1Ad.Resources = specRequests
+					break
+				}
+			}
+			queueUnit.Unit.Status.Admissions = append(queueUnit.Unit.Status.Admissions, v1Ad)
+		}
+	}
+
 	err := eq.cache.Reserve(quotaName, queueUnit)
 	if err != nil {
 		klog.ErrorS(err, "fail to reserve", "queueunit", queueUnit.Name)
