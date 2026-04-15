@@ -19,12 +19,6 @@ installation:
   roleListGroups:
     - '*'
 
-admissionCheckController:
-  enabled: true
-  image:
-    repository: acs/prevreq-controller
-    tag: v1.0.0-aliyun-d31082a1
-
 controller:
   image:
     repository: koordinatorsh/koord-queue
@@ -46,7 +40,8 @@ controller:
 
 extension:
   jobextensions:
-    tag: v1.1.3-aliyun-13b87449
+    repository: koordinatorsh/jobextensions
+    tag: latest
     resources:
       limits:
         memory: 2Gi

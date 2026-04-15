@@ -211,7 +211,7 @@ func (s *Scheduler) schedule(ctx context.Context, q *queue.Queue) {
 	}()
 
 	finished := s.finished
-	klog.Infof("-------------------------------------")
+	klog.V(5).Infof("-------------------------------------")
 	magicNumber := rand.Int31()
 	logger := klog.FromContext(schedulingCycleCtx).WithValues("queue", q.Name(), "scheduleNumber", magicNumber)
 	ctx = logr.NewContext(ctx, logger)

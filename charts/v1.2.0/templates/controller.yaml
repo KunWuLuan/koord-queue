@@ -70,20 +70,6 @@ spec:
             {{- end}}
           resources:
             {{- toYaml .Values.controller.resources | nindent 12 }}
-        {{- if .Values.admissionCheckController.enabled }}
-        - command:
-            - /manager
-          image: "{{ include "koord-queue.imagePrefix" . }}/{{ .Values.admissionCheckController.image.repository }}:{{ .Values.admissionCheckController.image.tag }}"
-          imagePullPolicy: IfNotPresent
-          name: provreq-ac-ctrl
-          resources:
-            limits:
-              cpu: 100m
-              memory: 128Mi
-            requests:
-              cpu: 100m
-              memory: 128Mi
-        {{- end }}
       terminationGracePeriodSeconds: 10
 ---
 apiVersion: apps/v1
@@ -117,7 +103,7 @@ spec:
     {{- end }}
       containers:
         - command:
-            - /manager
+            - /usr/bin/koord-queue-controllers
           args:
             - --leader-elect
             {{- $jobType := "" }}
@@ -140,7 +126,7 @@ spec:
             {{- $jobType = print $jobType ",workflow"}}
             {{- end }}
             - --enabled-extensions={{- $jobType | trimPrefix "," }}
-          image: "{{ include "koord-queue.imagePrefix" . }}/acs/job-extensions:{{ .Values.extension.jobextensions.tag }}"
+          image: "{{ include "koord-queue.imagePrefix" . }}/{{.Values.extension.jobextensions.repository}}:{{ .Values.extension.jobextensions.tag }}"
           name: manager
           livenessProbe:
             httpGet:

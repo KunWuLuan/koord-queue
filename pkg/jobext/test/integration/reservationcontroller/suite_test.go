@@ -52,15 +52,32 @@ func TestControllers(t *testing.T) {
 // setting the 'KUBEBUILDER_ASSETS' environment variable. To ensure the binaries are
 // properly set up, run 'make setup-envtest' beforehand.
 func getFirstFoundEnvTestBinaryDir() string {
-	basePath := filepath.Join("..", "..", "..", "bin", "k8s")
+	// Check KUBEBUILDER_ASSETS env var first
+	if assets := os.Getenv("KUBEBUILDER_ASSETS"); assets != "" {
+		return assets
+	}
+	// Walk two levels of subdirectories under <project-root>/bin/k8s to find the
+	// directory containing etcd/kube-apiserver/kubectl binaries.
+	// The layout created by setup-envtest is: bin/k8s/k8s/<version>-<os>-<arch>/
+	basePath := filepath.Join("..", "..", "..", "..", "..", "bin", "k8s")
 	entries, err := os.ReadDir(basePath)
 	if err != nil {
 		logf.Log.Error(err, "Failed to read directory", "path", basePath)
 		return ""
 	}
 	for _, entry := range entries {
-		if entry.IsDir() {
-			return filepath.Join(basePath, entry.Name())
+		if !entry.IsDir() {
+			continue
+		}
+		subPath := filepath.Join(basePath, entry.Name())
+		subEntries, err := os.ReadDir(subPath)
+		if err != nil {
+			continue
+		}
+		for _, subEntry := range subEntries {
+			if subEntry.IsDir() {
+				return filepath.Join(subPath, subEntry.Name())
+			}
 		}
 	}
 	return ""

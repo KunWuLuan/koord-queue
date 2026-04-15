@@ -36,3 +36,18 @@ func ResourceUsageRecord(rl v1.ResourceList, recorder *prometheus.GaugeVec, name
 		}
 	}
 }
+
+// getParentQuotaName returns the parent quota name from the ElasticQuota labels.
+// If no parent is specified and the quota is not the root, it defaults to KoordRootQuota,
+// matching upstream koordinator behavior.
+func getParentQuotaName(quota *v1alpha1.ElasticQuota) string {
+	if quota.Labels != nil {
+		if parent := quota.Labels[ParentQuotaNameLabelKey]; parent != "" {
+			return parent
+		}
+	}
+	if quota.Name == KoordRootQuota {
+		return ""
+	}
+	return KoordRootQuota
+}

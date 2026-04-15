@@ -52,10 +52,18 @@ func NewElasticQuotaInfo(q *v1alpha1.ElasticQuota) *ElasticQuotaInfo {
 	}
 
 	for k, v := range q.Spec.Max {
-		info.Max[k] = v.Value()
+		if k == "cpu" {
+			info.Max[k] = v.MilliValue()
+		} else {
+			info.Max[k] = v.Value()
+		}
 	}
 	for k, v := range q.Spec.Min {
-		info.Min[k] = v.Value()
+		if k == "cpu" {
+			info.Min[k] = v.MilliValue()
+		} else {
+			info.Min[k] = v.Value()
+		}
 	}
 
 	return info
@@ -111,7 +119,8 @@ func (info *ElasticQuotaInfo) DeleteQueueUnit(currentQuota string, queueUnit *fr
 	}
 
 	delete(info.Reserved, queueUnit.Unit.UID)
-	res := utils.TransResourceList(queueUnit.Unit.Spec.Resource)
+	// Use the same resource source as AddQueueUnit to ensure consistency
+	res := utils.GetReservedResource(queueUnit.Unit).Resources
 
 	queueUnitQuota := getQuotaName(queueUnit.Unit)
 	sameQuota := queueUnitQuota == currentQuota
