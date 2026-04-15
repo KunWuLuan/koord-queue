@@ -160,9 +160,6 @@ func (eq *ElasticQuota) Filter(ctx context.Context, queueUnit *framework.QueueUn
 		return framework.NewStatus(framework.Unschedulable, err.Error(), nil)
 	}
 
-	klog.Infof("success determine queueUnit oversoldType, queueName:%v, itemName:%v",
-		quotaName, queueUnit.Name)
-
 	return framework.NewStatus(framework.Success, "", ads)
 }
 
