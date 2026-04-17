@@ -114,15 +114,17 @@ func (info *ElasticQuotaInfo) AddQueueUnit(currentQuota string, queueUnit *frame
 }
 
 func (info *ElasticQuotaInfo) DeleteQueueUnit(currentQuota string, queueUnit *framework.QueueUnitInfo) {
-	if _, exist := info.Reserved[queueUnit.Unit.UID]; !exist {
+	reserved, exist := info.Reserved[queueUnit.Unit.UID]
+	if reserved == nil || !exist {
 		return
 	}
 
-	delete(info.Reserved, queueUnit.Unit.UID)
+	resevedQueueUnit := reserved.Unit
+	delete(info.Reserved, resevedQueueUnit.UID)
 	// Use the same resource source as AddQueueUnit to ensure consistency
-	res := utils.GetReservedResource(queueUnit.Unit).Resources
+	res := utils.GetReservedResource(resevedQueueUnit).Resources
 
-	queueUnitQuota := getQuotaName(queueUnit.Unit)
+	queueUnitQuota := getQuotaName(resevedQueueUnit)
 	sameQuota := queueUnitQuota == currentQuota
 
 	utils.UpdateUsage(info.Used, res, -1)
@@ -132,7 +134,7 @@ func (info *ElasticQuotaInfo) DeleteQueueUnit(currentQuota string, queueUnit *fr
 		utils.UpdateUsage(info.ChildrenUsed, res, -1)
 	}
 
-	isOversold := utils.IsQueueUnitOversold(queueUnit)
+	isOversold := utils.IsQueueUnitOversold(reserved)
 	if isOversold {
 		utils.UpdateUsage(info.OverSoldUsed, res, -1)
 		if sameQuota {
@@ -152,7 +154,7 @@ func (info *ElasticQuotaInfo) DeleteQueueUnit(currentQuota string, queueUnit *fr
 	klog.Infof("success DeleteQueueUnit, currentQuotaName:%v, item QueueName:%v, itemName:%v, "+
 		"isOversold: %v, itemRes:%v, max:%v, min:%v, used:%v, selfUsed:%v, childrenUsed:%v, "+
 		"guaranteedUsed:%v, selfGuaranteedUsed:%v, childrenGuaranteedUsed:%v, "+
-		"overSoldUsed:%v, selfOverSoldUsed:%v, childrenOverSoldUsed:%v", currentQuota, queueUnitQuota, queueUnit.Name,
+		"overSoldUsed:%v, selfOverSoldUsed:%v, childrenOverSoldUsed:%v", currentQuota, queueUnitQuota, resevedQueueUnit.Name,
 		isOversold, res, info.Max, info.Min, info.Used, info.SelfUsed, info.ChildrenUsed, info.GuaranteedUsed,
 		info.SelfGuaranteedUsed, info.ChildrenGuaranteedUsed, info.OverSoldUsed,
 		info.SelfOverSoldUsed, info.ChildrenOverSoldUsed)
@@ -177,7 +179,7 @@ func (info *ElasticQuotaInfo) CheckUsage(currentQuota string,
 	valid, resKey := checkResource(limit, used, queueUnitRes, oversellRate)
 	if !valid {
 		klog.Infof("res not enough, itemName:%v, queueUnitQuota:%v, currentQuota:%v, "+
-			"oversellRate:%v,  resKey:%v, queueUnitRes:%v, %v, %v", queueUnit.Name,
+			"oversellRate:%v,  resKey:%v, queueUnitRes:%v, limit:%v, used:%v", queueUnit.Name,
 			queueUnitQuota, currentQuota, oversellRate, resKey, queueUnitRes, limit, used)
 
 		errMsg := fmt.Sprintf("limited quotaName:%v, limited resKey:%v,", currentQuota, resKey)

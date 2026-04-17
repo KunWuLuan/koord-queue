@@ -342,7 +342,11 @@ func GetReservedResource(qu *v1alpha1.QueueUnit) *Resource {
 func TransResourceList(res v1.ResourceList) map[v1.ResourceName]int64 {
 	result := make(map[v1.ResourceName]int64)
 	for k, v := range res {
-		result[k] = v.Value()
+		if k == "cpu" {
+			result[k] = v.MilliValue()
+		} else {
+			result[k] = v.Value()
+		}
 	}
 	return result
 }
