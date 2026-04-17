@@ -676,3 +676,94 @@ func TestAddQueueUnit_CheckUsage(t *testing.T) {
 		assert.True(t, err == nil)
 	}
 }
+
+func TestDeleteQueueUnit_UsesReservedQueueUnit(t *testing.T) {
+	// This test verifies the fix where DeleteQueueUnit uses the reserved queueUnit
+	// instead of the parameter to ensure correct resource tracking
+	q := &v1alpha1.ElasticQuota{}
+	q.Name = "q1"
+	q.Spec = v1alpha1.ElasticQuotaSpec{}
+	q.Spec.Max = make(v1.ResourceList)
+	q.Spec.Min = make(v1.ResourceList)
+	q.Spec.Max["cpu"] = resource.MustParse("20")
+	q.Spec.Min["cpu"] = resource.MustParse("10")
+
+	elasticQuotaInfo := NewElasticQuotaInfo(q)
+
+	// Create and add a queueUnit with 5 CPU
+	queueUnit := &framework.QueueUnitInfo{}
+	queueUnit.Unit = &api.QueueUnit{}
+	queueUnit.Unit.Name = "job1"
+	queueUnit.Unit.UID = types.UID("test-uid-1")
+	queueUnit.Unit.Spec = api.QueueUnitSpec{}
+	queueUnit.Unit.Spec.Resource = make(v1.ResourceList)
+	queueUnit.Unit.Spec.Resource["cpu"] = resource.MustParse("5")
+	queueUnit.Unit.Labels = map[string]string{
+		QuotaNameLabelKey: "q1",
+	}
+	queueUnit.Unit.Annotations = map[string]string{
+		utils.AnnotationActualQuotaOversoldType: utils.QuotaOversoldTypeForbidden,
+	}
+
+	// Add the queueUnit
+	elasticQuotaInfo.AddQueueUnit("q1", queueUnit)
+	assert.Equal(t, 1, len(elasticQuotaInfo.Reserved))
+	assert.Equal(t, int64(5000), elasticQuotaInfo.Used["cpu"]) // 5 cores = 5000 milli-cores
+
+	// Create a different queueUnit with different resource to pass as parameter
+	// This simulates the bug where the parameter might have stale/different data
+	differentQueueUnit := &framework.QueueUnitInfo{}
+	differentQueueUnit.Unit = &api.QueueUnit{}
+	differentQueueUnit.Unit.Name = "job1"
+	differentQueueUnit.Unit.UID = types.UID("test-uid-1")
+	differentQueueUnit.Unit.Spec = api.QueueUnitSpec{}
+	differentQueueUnit.Unit.Spec.Resource = make(v1.ResourceList)
+	// Different resource value - if DeleteQueueUnit uses this instead of reserved, it would be wrong
+	differentQueueUnit.Unit.Spec.Resource["cpu"] = resource.MustParse("10")
+	differentQueueUnit.Unit.Labels = map[string]string{
+		QuotaNameLabelKey: "q1",
+	}
+	differentQueueUnit.Unit.Annotations = map[string]string{
+		utils.AnnotationActualQuotaOversoldType: utils.QuotaOversoldTypeForbidden,
+	}
+
+	// Delete using the different queueUnit parameter
+	// The fix ensures it uses the reserved queueUnit (5 CPU) not the parameter (10 CPU)
+	elasticQuotaInfo.DeleteQueueUnit("q1", differentQueueUnit)
+
+	// After delete, used should be 0 (5000 - 5000 = 0), not -5000 (5000 - 10000)
+	// This proves DeleteQueueUnit uses the reserved queueUnit's resource, not the parameter's
+	assert.Equal(t, 0, len(elasticQuotaInfo.Reserved))
+	assert.Equal(t, int64(0), elasticQuotaInfo.Used["cpu"])
+	assert.Equal(t, int64(0), elasticQuotaInfo.SelfUsed["cpu"])
+}
+
+func TestDeleteQueueUnit_NonExistentQueueUnit(t *testing.T) {
+	// Test that deleting a non-existent queueUnit doesn't cause panic or errors
+	q := &v1alpha1.ElasticQuota{}
+	q.Name = "q1"
+	q.Spec = v1alpha1.ElasticQuotaSpec{}
+	q.Spec.Max = make(v1.ResourceList)
+	q.Spec.Min = make(v1.ResourceList)
+	q.Spec.Max["cpu"] = resource.MustParse("20")
+	q.Spec.Min["cpu"] = resource.MustParse("10")
+
+	elasticQuotaInfo := NewElasticQuotaInfo(q)
+
+	// Try to delete a queueUnit that was never added
+	nonExistentQueueUnit := &framework.QueueUnitInfo{}
+	nonExistentQueueUnit.Unit = &api.QueueUnit{}
+	nonExistentQueueUnit.Unit.Name = "non-existent"
+	nonExistentQueueUnit.Unit.UID = types.UID("non-existent-uid")
+	nonExistentQueueUnit.Unit.Spec = api.QueueUnitSpec{}
+	nonExistentQueueUnit.Unit.Spec.Resource = make(v1.ResourceList)
+	nonExistentQueueUnit.Unit.Spec.Resource["cpu"] = resource.MustParse("5")
+	nonExistentQueueUnit.Unit.Labels = map[string]string{
+		QuotaNameLabelKey: "q1",
+	}
+
+	// Should not panic and should not change any state
+	elasticQuotaInfo.DeleteQueueUnit("q1", nonExistentQueueUnit)
+	assert.Equal(t, 0, len(elasticQuotaInfo.Reserved))
+	assert.Equal(t, int64(0), elasticQuotaInfo.Used["cpu"])
+}
