@@ -13,7 +13,7 @@ import (
 	externalversions "github.com/koordinator-sh/koord-queue/pkg/client/informers/externalversions"
 	"github.com/koordinator-sh/koord-queue/pkg/framework"
 	"github.com/koordinator-sh/koord-queue/pkg/framework/plugins"
-	elasticquotaplugin "github.com/koordinator-sh/koord-queue/pkg/framework/plugins/elasticquota"
+	"github.com/koordinator-sh/koord-queue/pkg/framework/plugins/elasticquotav1alpha1"
 	"github.com/koordinator-sh/koord-queue/pkg/framework/plugins/priority"
 	"github.com/koordinator-sh/koord-queue/pkg/framework/runtime"
 	"github.com/koordinator-sh/koord-queue/pkg/utils"
@@ -44,7 +44,7 @@ func NewFrameworkForTesting() (framework.Framework, map[string]framework.Plugin,
 	pluginConfig := &config.KoordQueueConfiguration{
 		Plugins: []config.Plugin{
 			{Name: priority.Name},
-			{Name: elasticquotaplugin.Name},
+			{Name: elasticquotav1alpha1.Name},
 		},
 	}
 	fwk, err := runtime.NewFramework(
@@ -96,7 +96,7 @@ func (f *FakeHandle) GetQueueUnitQuotaName(*v1alpha1.QueueUnit) ([]string, error
 }
 
 func (f *FakeHandle) QueueInformerFactory() externalversions.SharedInformerFactory { return f.ver }
-func (f *FakeHandle) SharedInformerFactory() kubeinformers.SharedInformerFactory       { return f.in }
+func (f *FakeHandle) SharedInformerFactory() kubeinformers.SharedInformerFactory   { return f.in }
 func (f *FakeHandle) KubeConfigPath() string                                       { return "" }
 func (f *FakeHandle) QueueUnitClient() versioned.Interface                         { return f.fakeClient }
 func (f *FakeHandle) OversellRate() float64                                        { return 1 }

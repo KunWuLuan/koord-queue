@@ -17,7 +17,7 @@ import (
 	"github.com/koordinator-sh/koord-queue/pkg/controllers"
 	"github.com/koordinator-sh/koord-queue/pkg/framework"
 	eqversioned "github.com/koordinator-sh/koord-queue/pkg/framework/apis/elasticquota/client/clientset/versioned"
-	elasticquotatree "github.com/koordinator-sh/koord-queue/pkg/framework/plugins/elasticquota"
+	"github.com/koordinator-sh/koord-queue/pkg/framework/plugins/elasticquotav1alpha1"
 	"github.com/koordinator-sh/koord-queue/pkg/queue"
 	"github.com/koordinator-sh/koord-queue/pkg/queue/multischedulingqueue"
 	"github.com/koordinator-sh/koord-queue/pkg/scheduler"
@@ -72,7 +72,7 @@ var _ = Describe("IntelligentQueue", Ordered, func() {
 	BeforeAll(func() {
 		ctx, cancel = context.WithCancel(context.Background())
 		fw, plgs, cli = testutils.NewFrameworkForTesting()
-		eqcli = plgs["ElasticQuota"].(*elasticquotatree.ElasticQuota).GetClient()
+		eqcli = plgs[elasticquotav1alpha1.Name].(*elasticquotav1alpha1.ElasticQuota).GetClient()
 		kubeCli = fake.NewSimpleClientset()
 
 		// Create event broadcaster
