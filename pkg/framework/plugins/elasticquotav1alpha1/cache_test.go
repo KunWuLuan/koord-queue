@@ -688,3 +688,146 @@ func Test_cacheImpl_AddOrUpdateQuota_DeleteQuota(t *testing.T) {
 	assert.Equal(t, 0, len(cache.quotaParent))
 	assert.Equal(t, 0, len(cache.quotas))
 }
+
+func Test_cacheImpl_SchedulingState(t *testing.T) {
+	cache := buildCache()
+
+	uid1 := types.UID("queueunit-1")
+	uid2 := types.UID("queueunit-2")
+
+	// Test initial state - should not be scheduling
+	assert.False(t, cache.IsScheduling(uid1))
+	assert.False(t, cache.IsScheduling(uid2))
+
+	// Test MarkScheduling
+	cache.MarkScheduling(uid1)
+	assert.True(t, cache.IsScheduling(uid1))
+	assert.False(t, cache.IsScheduling(uid2))
+
+	// Test marking multiple queueUnits
+	cache.MarkScheduling(uid2)
+	assert.True(t, cache.IsScheduling(uid1))
+	assert.True(t, cache.IsScheduling(uid2))
+
+	// Test ClearScheduling for one queueUnit
+	cache.ClearScheduling(uid1)
+	assert.False(t, cache.IsScheduling(uid1))
+	assert.True(t, cache.IsScheduling(uid2))
+
+	// Test ClearScheduling for non-existent uid (should not panic)
+	cache.ClearScheduling(types.UID("non-existent"))
+	assert.False(t, cache.IsScheduling(types.UID("non-existent")))
+
+	// Test ClearScheduling for remaining queueUnit
+	cache.ClearScheduling(uid2)
+	assert.False(t, cache.IsScheduling(uid2))
+
+	// Test re-marking after clear
+	cache.MarkScheduling(uid1)
+	assert.True(t, cache.IsScheduling(uid1))
+	cache.ClearScheduling(uid1)
+	assert.False(t, cache.IsScheduling(uid1))
+}
+
+func Test_cacheImpl_SchedulingAndReservedIndependence(t *testing.T) {
+	cache := buildCache()
+
+	uid := types.UID("queueunit-test")
+
+	// Scheduling and Reserved states should be independent
+	assert.False(t, cache.IsScheduling(uid))
+	assert.False(t, cache.IsReserved(uid))
+
+	// Mark as scheduling only
+	cache.MarkScheduling(uid)
+	assert.True(t, cache.IsScheduling(uid))
+	assert.False(t, cache.IsReserved(uid))
+
+	// Clear scheduling
+	cache.ClearScheduling(uid)
+	assert.False(t, cache.IsScheduling(uid))
+	assert.False(t, cache.IsReserved(uid))
+
+	// Scheduling state should not affect reserved state tracking
+	cache.MarkScheduling(uid)
+	assert.True(t, cache.IsScheduling(uid))
+}
+
+func Test_cacheImpl_Unreserve_UsesReservedQueueUnitResources(t *testing.T) {
+	// This test verifies that Unreserve correctly releases resources
+	// even when the queueUnit's state has changed (e.g., resource request changed)
+	// The fix ensures DeleteQueueUnit uses the reserved queueUnit's resources,
+	// not the potentially modified parameter's resources
+
+	cache := buildCache()
+
+	// Create a quota hierarchy
+	quotas := []*v1alpha1.ElasticQuota{
+		MakeElasticQuota("parent-quota", "default").
+			Max(map[string]int64{"cpu": 100000}).Min(map[string]int64{"cpu": 50000}).Quota(),
+		MakeElasticQuota("child-quota", "default").Parent("parent-quota").
+			Max(map[string]int64{"cpu": 50000}).Min(map[string]int64{"cpu": 20000}).Quota(),
+	}
+	for _, quota := range quotas {
+		cache.AddOrUpdateQuota(quota)
+	}
+
+	// Create a queueUnit with 10 CPU (10000 milli-cores)
+	originalQueueUnit := &framework.QueueUnitInfo{}
+	originalQueueUnit.Unit = &api.QueueUnit{}
+	originalQueueUnit.Unit.Name = "test-job"
+	originalQueueUnit.Unit.UID = types.UID("job-uid-123")
+	originalQueueUnit.Unit.Spec = api.QueueUnitSpec{}
+	originalQueueUnit.Unit.Spec.Resource = make(v1.ResourceList)
+	originalQueueUnit.Unit.Spec.Resource["cpu"] = resource.MustParse("10") // 10 cores = 10000 milli-cores
+	originalQueueUnit.Unit.Labels = map[string]string{
+		QuotaNameLabelKey: "child-quota",
+	}
+	originalQueueUnit.Unit.Annotations = map[string]string{
+		utils.AnnotationActualQuotaOversoldType: utils.QuotaOversoldTypeForbidden,
+	}
+
+	// Reserve the queueUnit
+	err := cache.Reserve("child-quota", originalQueueUnit)
+	assert.Nil(t, err)
+	assert.True(t, cache.IsReserved(types.UID("job-uid-123")))
+
+	// Verify resources are reserved correctly
+	childQuotaInfo := cache.GetElasticQuotaInfo4Test("child-quota")
+	parentQuotaInfo := cache.GetElasticQuotaInfo4Test("parent-quota")
+	assert.Equal(t, int64(10000), childQuotaInfo.Used["cpu"]) // 10 cores in milli-cores
+	assert.Equal(t, int64(10000), childQuotaInfo.SelfUsed["cpu"])
+	assert.Equal(t, int64(10000), parentQuotaInfo.Used["cpu"])
+	assert.Equal(t, int64(0), parentQuotaInfo.ChildrenUsed["cpu"])
+
+	// Simulate job state change: the queueUnit's resource request changed to 20 CPU
+	// This could happen if the job was updated before being unreserved
+	modifiedQueueUnit := &framework.QueueUnitInfo{}
+	modifiedQueueUnit.Unit = &api.QueueUnit{}
+	modifiedQueueUnit.Unit.Name = "test-job"
+	modifiedQueueUnit.Unit.UID = types.UID("job-uid-123") // Same UID
+	modifiedQueueUnit.Unit.Spec = api.QueueUnitSpec{}
+	modifiedQueueUnit.Unit.Spec.Resource = make(v1.ResourceList)
+	modifiedQueueUnit.Unit.Spec.Resource["cpu"] = resource.MustParse("20") // Changed to 20 cores
+	modifiedQueueUnit.Unit.Labels = map[string]string{
+		QuotaNameLabelKey: "child-quota",
+	}
+	modifiedQueueUnit.Unit.Annotations = map[string]string{
+		utils.AnnotationActualQuotaOversoldType: utils.QuotaOversoldTypeForbidden,
+	}
+
+	// Unreserve with the MODIFIED queueUnit
+	// The fix ensures it releases the ORIGINAL 10 CPU, not the modified 20 CPU
+	err = cache.Unreserve("child-quota", modifiedQueueUnit)
+	assert.Nil(t, err)
+	assert.False(t, cache.IsReserved(types.UID("job-uid-123")))
+
+	// Verify resources are released correctly (should be 0, not -10000)
+	// If the bug existed, it would release 20000 and result in -10000
+	childQuotaInfo = cache.GetElasticQuotaInfo4Test("child-quota")
+	parentQuotaInfo = cache.GetElasticQuotaInfo4Test("parent-quota")
+	assert.Equal(t, int64(0), childQuotaInfo.Used["cpu"]) // Should be 0, not -10000
+	assert.Equal(t, int64(0), childQuotaInfo.SelfUsed["cpu"])
+	assert.Equal(t, int64(0), parentQuotaInfo.Used["cpu"]) // Should be 0, not -10000
+	assert.Equal(t, int64(0), parentQuotaInfo.ChildrenUsed["cpu"])
+}
