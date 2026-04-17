@@ -15,7 +15,7 @@ import (
 	externalversions "github.com/koordinator-sh/koord-queue/pkg/client/informers/externalversions"
 	"github.com/koordinator-sh/koord-queue/pkg/framework"
 	"github.com/koordinator-sh/koord-queue/pkg/framework/plugins"
-	elasticquota "github.com/koordinator-sh/koord-queue/pkg/framework/plugins/elasticquota"
+	"github.com/koordinator-sh/koord-queue/pkg/framework/plugins/elasticquotav1alpha1"
 	"github.com/koordinator-sh/koord-queue/pkg/framework/plugins/priority"
 	fr "github.com/koordinator-sh/koord-queue/pkg/framework/runtime"
 	"github.com/koordinator-sh/koord-queue/pkg/queue/multischedulingqueue"
@@ -44,7 +44,7 @@ func NewFrameworkForTesting(extraPlugins fr.Registry) (framework.Framework, map[
 	}
 	pluginList := []config.Plugin{
 		{Name: priority.Name},
-		{Name: elasticquota.Name},
+		{Name: elasticquotav1alpha1.Name},
 	}
 	for n := range extraPlugins {
 		pluginList = append(pluginList, config.Plugin{Name: n})

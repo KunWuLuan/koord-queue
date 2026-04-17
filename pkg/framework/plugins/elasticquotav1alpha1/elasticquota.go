@@ -46,6 +46,11 @@ func (eq *ElasticQuota) GetQueueUnitQuotaName(qu *v1alpha1.QueueUnit) ([]string,
 	return []string{getQuotaName(qu)}, nil
 }
 
+func (eq *ElasticQuota) GetClient() versioned.Interface {
+	// only for test
+	return eq.eqClient
+}
+
 const Name = "ElasticQuotaV2"
 
 // Name returns name of the plugin.
