@@ -8,7 +8,6 @@ import (
 	"github.com/koordinator-sh/koord-queue/pkg/client/clientset/versioned"
 	externalv1alpha1 "github.com/koordinator-sh/koord-queue/pkg/client/listers/scheduling/v1alpha1"
 	"github.com/koordinator-sh/koord-queue/pkg/framework"
-	"github.com/koordinator-sh/koord-queue/pkg/framework/plugins/elasticquota/util"
 	"github.com/koordinator-sh/koord-queue/pkg/queue/queuepolicies"
 	"github.com/koordinator-sh/koord-queue/pkg/queue/queuepolicies/basequeue"
 	"k8s.io/klog/v2"
@@ -62,12 +61,6 @@ func priorityLess(a, b *framework.QueueUnitInfo) int {
 		return 1
 	} else if prioA > prioB {
 		return -1
-	} else if util.IsJobPreemptible(a) != util.IsJobPreemptible(b) {
-		if util.IsJobPreemptible(a) {
-			return 1
-		} else {
-			return -1
-		}
 	} else if a.InitialAttemptTimestamp.After(b.InitialAttemptTimestamp) {
 		return 1
 	} else if a.InitialAttemptTimestamp.Before(b.InitialAttemptTimestamp) {
