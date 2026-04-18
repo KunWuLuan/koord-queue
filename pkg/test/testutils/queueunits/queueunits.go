@@ -2,7 +2,9 @@ package queueunits
 
 import (
 	"github.com/koordinator-sh/koord-queue/pkg/apis/scheduling/v1alpha1"
+	eqv1alpha1 "github.com/koordinator-sh/koord-queue/pkg/framework/apis/elasticquota/scheduling/v1alpha1"
 	eqv1beta1 "github.com/koordinator-sh/koord-queue/pkg/framework/apis/elasticquota/scheduling/v1beta1"
+	"github.com/koordinator-sh/koord-queue/pkg/queue/queuepolicies"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -163,4 +165,59 @@ func (e *ElasticQuotaTreeWrapper) Child(name string, namespace []string, min, ma
 
 func (e *ElasticQuotaTreeWrapper) Obj() *eqv1beta1.ElasticQuotaTree {
 	return e.root
+}
+
+// ElasticQuotaWrapper wraps Koordinator ElasticQuota CRD (v1alpha1)
+type ElasticQuotaWrapper struct {
+	elasticQuota *eqv1alpha1.ElasticQuota
+}
+
+// MakeElasticQuota creates a new ElasticQuota wrapper
+func MakeElasticQuota(name, namespace string) *ElasticQuotaWrapper {
+	return &ElasticQuotaWrapper{
+		elasticQuota: &eqv1alpha1.ElasticQuota{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      name,
+				Namespace: namespace,
+			},
+		},
+	}
+}
+
+// Min sets the min resources for the ElasticQuota
+func (e *ElasticQuotaWrapper) Min(min v1.ResourceList) *ElasticQuotaWrapper {
+	e.elasticQuota.Spec.Min = min
+	return e
+}
+
+// Max sets the max resources for the ElasticQuota
+func (e *ElasticQuotaWrapper) Max(max v1.ResourceList) *ElasticQuotaWrapper {
+	e.elasticQuota.Spec.Max = max
+	return e
+}
+
+// Labels sets the labels for the ElasticQuota
+func (e *ElasticQuotaWrapper) Labels(labels map[string]string) *ElasticQuotaWrapper {
+	e.elasticQuota.Labels = labels
+	return e
+}
+
+// Annotations sets the annotations for the ElasticQuota
+func (e *ElasticQuotaWrapper) Annotations(annotations map[string]string) *ElasticQuotaWrapper {
+	e.elasticQuota.Annotations = annotations
+	return e
+}
+
+// QueuePolicy sets the queue policy label for the ElasticQuota
+func (e *ElasticQuotaWrapper) QueuePolicy(policy string) *ElasticQuotaWrapper {
+	if e.elasticQuota.Labels == nil {
+		e.elasticQuota.Labels = make(map[string]string)
+	}
+	e.elasticQuota.Labels[queuepolicies.QueuePolicyLabelKey] = policy
+	return e
+}
+
+// Obj returns the ElasticQuota object
+func (e *ElasticQuotaWrapper) Obj() *eqv1alpha1.ElasticQuota {
+	return e.elasticQuota
 }
