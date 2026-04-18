@@ -47,7 +47,7 @@ func TestIntelligentQueue(t *testing.T) {
 }
 
 var _ = Describe("IntelligentQueue", Ordered, func() {
-	os.Setenv("QueueGroupPlugin", "elasticquota")
+	os.Setenv("QueueGroupPlugin", "elasticquotav2")
 	os.Setenv("TestENV", "true")
 	options.SetDefaultPreemptibleForTest(true)
 
