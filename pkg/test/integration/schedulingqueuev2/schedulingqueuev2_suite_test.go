@@ -43,7 +43,7 @@ func TestSchedulingQueueV2(t *testing.T) {
 }
 
 var _ = Describe("SchedulingQueueV2", Ordered, func() {
-	os.Setenv("QueueGroupPlugin", "elasticquota")
+	os.Setenv("QueueGroupPlugin", "elasticquotav2")
 	os.Setenv("TestENV", "true")
 	options.SetDefaultPreemptibleForTest(true)
 

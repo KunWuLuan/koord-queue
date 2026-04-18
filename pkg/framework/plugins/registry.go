@@ -69,6 +69,6 @@ func NewFakeRegistry() (runtime.Registry, map[string]framework.Plugin) {
 			elasticquotav1alpha1.Name: pluginproxy(elasticquotav1alpha1.FakeNew, plugins),
 		}, plugins
 	default:
-		panic("QueueGroupPlugin must be in [resourceQuota|elasticquota]")
+		panic("QueueGroupPlugin must be in [resourceQuota|elasticquotav2]")
 	}
 }
