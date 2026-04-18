@@ -19,6 +19,7 @@ import (
 	"github.com/koordinator-sh/koord-queue/pkg/queue"
 	"github.com/koordinator-sh/koord-queue/pkg/queue/multischedulingqueue"
 	"github.com/koordinator-sh/koord-queue/pkg/scheduler"
+	"github.com/koordinator-sh/koord-queue/pkg/queue/queuepolicies"
 	"github.com/koordinator-sh/koord-queue/pkg/test/testutils"
 	"github.com/koordinator-sh/koord-queue/pkg/test/testutils/queueunits"
 	"github.com/koordinator-sh/koord-queue/pkg/utils"
@@ -113,28 +114,28 @@ var _ = Describe("SchedulingQueueV2", Ordered, func() {
 		queueUnitInformerFactory.Start(wait.NeverStop)
 		go controller.Start(ctx)
 
-		root := queueunits.ElasticQuotaTree(corev1.ResourceList{"cpu": resource.MustParse("0")}, corev1.ResourceList{"cpu": resource.MustParse("2")})
-		root.Child("child-1", []string{"default"}, corev1.ResourceList{"cpu": resource.MustParse("0")}, corev1.ResourceList{"cpu": resource.MustParse("2")})
-		eqcli.SchedulingV1beta1().ElasticQuotaTrees("kube-system").Create(context.Background(), root.Obj(), metav1.CreateOptions{})
+		// Create ElasticQuotas for Block and Priority queues
+		// Each ElasticQuota will auto-create a Queue with the corresponding policy
+		eqBlock := queueunits.MakeElasticQuota("test-queue-block", "default").
+			QueuePolicy("Block").
+			Max(corev1.ResourceList{"cpu": resource.MustParse("2")}).
+			Min(corev1.ResourceList{"cpu": resource.MustParse("0")}).
+			Obj()
+		eqcli.SchedulingV1alpha1().ElasticQuotas("default").Create(context.Background(), eqBlock, metav1.CreateOptions{})
+		
+		eqPriority := queueunits.MakeElasticQuota("test-queue-priority", "default").
+			QueuePolicy("Priority").
+			Max(corev1.ResourceList{"cpu": resource.MustParse("2")}).
+			Min(corev1.ResourceList{"cpu": resource.MustParse("0")}).
+			Obj()
+		eqcli.SchedulingV1alpha1().ElasticQuotas("default").Create(context.Background(), eqPriority, metav1.CreateOptions{})
 
 		kubeCli.CoreV1().Namespaces().Update(context.Background(),
 			&corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "default",
 				Annotations: map[string]string{"koord-queue/available-queue": "{\"test-queue-block\":[\"*\"], \"test-queue-priority\":[\"*\"]}"}}},
 			metav1.UpdateOptions{})
-		fw.QueueUnitClient().SchedulingV1alpha1().Queues("koord-queue").Create(context.Background(), &v1alpha1.Queue{
-			ObjectMeta: metav1.ObjectMeta{Name: "test-queue-block", Namespace: "koord-queue",
-				Annotations: map[string]string{"koord-queue/wait-for-pods-running": "true", "koord-queue/available-quota": "child-1"}},
-			Spec: v1alpha1.QueueSpec{
-				QueuePolicy: "Block",
-			},
-		}, metav1.CreateOptions{})
-		fw.QueueUnitClient().SchedulingV1alpha1().Queues("koord-queue").Create(context.Background(), &v1alpha1.Queue{
-			ObjectMeta: metav1.ObjectMeta{Name: "test-queue-priority", Namespace: "koord-queue",
-				Annotations: map[string]string{"koord-queue/wait-for-pods-running": "true", "koord-queue/available-quota": "child-1"}},
-			Spec: v1alpha1.QueueSpec{
-				QueuePolicy: "Priority",
-			},
-		}, metav1.CreateOptions{})
+		// test-queue-block Queue is auto-created from ElasticQuota
+		// test-queue-priority Queue is auto-created from ElasticQuota
 	})
 
 	AfterAll(func() {
@@ -148,12 +149,12 @@ var _ = Describe("SchedulingQueueV2", Ordered, func() {
 
 		BeforeAll(func() {
 			qus = []*v1alpha1.QueueUnit{
-				queueunits.MakeQueueUnit("dequeued-block", "default").Resources(map[string]int64{"cpu": 1}).Annotations(map[string]string{"koord-queue/queue-name": "test-queue-block"}).Labels(map[string]string{"quota.scheduling.alibabacloud.com/name": "child-1"}).Priority(2).QueueUnit(),
+				queueunits.MakeQueueUnit("dequeued-block", "default").Resources(map[string]int64{"cpu": 1}).Annotations(map[string]string{"koord-queue/queue-name": "test-queue-block"}).Labels(map[string]string{"quota.scheduling.koordinator.sh/name": "test-queue-block"}).Priority(2).QueueUnit(),
 
-				queueunits.MakeQueueUnit("high-block", "default").Resources(map[string]int64{"cpu": 2}).Annotations(map[string]string{"koord-queue/queue-name": "test-queue-block"}).Labels(map[string]string{"quota.scheduling.alibabacloud.com/name": "child-1"}).Priority(3).QueueUnit(),
-				queueunits.MakeQueueUnit("high-block1", "default").Resources(map[string]int64{"cpu": 1}).Annotations(map[string]string{"koord-queue/queue-name": "test-queue-block"}).Labels(map[string]string{"quota.scheduling.alibabacloud.com/name": "child-1"}).Priority(3).QueueUnit(),
-				queueunits.MakeQueueUnit("mid-block", "default").Resources(map[string]int64{"cpu": 1}).Annotations(map[string]string{"koord-queue/queue-name": "test-queue-block"}).Labels(map[string]string{"quota.scheduling.alibabacloud.com/name": "child-1"}).Priority(2).QueueUnit(),
-				queueunits.MakeQueueUnit("low-block", "default").Resources(map[string]int64{"cpu": 1}).Annotations(map[string]string{"koord-queue/queue-name": "test-queue-block"}).Labels(map[string]string{"quota.scheduling.alibabacloud.com/name": "child-1"}).Priority(1).QueueUnit(),
+				queueunits.MakeQueueUnit("high-block", "default").Resources(map[string]int64{"cpu": 2}).Annotations(map[string]string{"koord-queue/queue-name": "test-queue-block"}).Labels(map[string]string{"quota.scheduling.koordinator.sh/name": "test-queue-block"}).Priority(3).QueueUnit(),
+				queueunits.MakeQueueUnit("high-block1", "default").Resources(map[string]int64{"cpu": 1}).Annotations(map[string]string{"koord-queue/queue-name": "test-queue-block"}).Labels(map[string]string{"quota.scheduling.koordinator.sh/name": "test-queue-block"}).Priority(3).QueueUnit(),
+				queueunits.MakeQueueUnit("mid-block", "default").Resources(map[string]int64{"cpu": 1}).Annotations(map[string]string{"koord-queue/queue-name": "test-queue-block"}).Labels(map[string]string{"quota.scheduling.koordinator.sh/name": "test-queue-block"}).Priority(2).QueueUnit(),
+				queueunits.MakeQueueUnit("low-block", "default").Resources(map[string]int64{"cpu": 1}).Annotations(map[string]string{"koord-queue/queue-name": "test-queue-block"}).Labels(map[string]string{"quota.scheduling.koordinator.sh/name": "test-queue-block"}).Priority(1).QueueUnit(),
 
 				queueunits.MakeQueueUnit("high-block", "default").Resources(map[string]int64{"cpu": 1}).Annotations(map[string]string{"koord-queue/queue-name": "test-queue-block"}).Labels(map[string]string{"quota.scheduling.alibabacloud.com/name": "child-2"}).Priority(3).QueueUnit(),
 				queueunits.MakeQueueUnit("mid-block", "default").Resources(map[string]int64{"cpu": 1}).Annotations(map[string]string{"koord-queue/queue-name": "test-queue-block"}).Labels(map[string]string{"quota.scheduling.alibabacloud.com/name": "child-2"}).Priority(2).QueueUnit(),
