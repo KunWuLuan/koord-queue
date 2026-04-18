@@ -12,7 +12,6 @@ import (
 
 	"github.com/koordinator-sh/koord-queue/pkg/framework/apis/elasticquota/scheduling/v1alpha1"
 	"github.com/koordinator-sh/koord-queue/pkg/queue/queuepolicies"
-	"github.com/koordinator-sh/koord-queue/pkg/queue/queuepolicies/schedulingqueuev2"
 	"github.com/koordinator-sh/koord-queue/pkg/utils"
 )
 
@@ -193,15 +192,22 @@ func makeNewestQueueCr(existQueue *queuev1alpha1.Queue, elasticQuota *v1alpha1.E
 	}
 }
 
+// allSupportedPolicies contains all supported queue policies
+var allSupportedPolicies = []string{
+	queuepolicies.Priority,
+	queuepolicies.Block,
+	queuepolicies.Round,
+	queuepolicies.Intelligent,
+}
+
 func findMatchedSupportPolicy(elasticQuota *v1alpha1.ElasticQuota) string {
 	newPolicy := ""
 	if elasticQuota.Labels != nil && elasticQuota.Labels[queuepolicies.QueuePolicyLabelKey] != "" {
-		if newPolicy == "" {
-			for _, supportPolicy := range schedulingqueuev2.SupportedPolicy {
-				if supportPolicy == elasticQuota.Labels[queuepolicies.QueuePolicyLabelKey] {
-					newPolicy = supportPolicy
-					break
-				}
+		requestedPolicy := elasticQuota.Labels[queuepolicies.QueuePolicyLabelKey]
+		for _, supportPolicy := range allSupportedPolicies {
+			if supportPolicy == requestedPolicy {
+				newPolicy = supportPolicy
+				break
 			}
 		}
 	}
