@@ -254,17 +254,18 @@ func (s *Scheduler) schedule(ctx context.Context, q *queue.Queue) {
 		// in first version, we admit all requests everytime
 		// maybe in later version we will support partial admit
 		res := status.Admissions()
-		status = s.fw.RunReservePluginsReserve(schedulingCycleCtx, unitInfo, res)
+		copiedUnit := unitInfo.Unit.DeepCopy()
+		copiedUnit.Status.Phase = v1alpha1.Dequeued
+		copiedUnitInfo := framework.NewQueueUnitInfo(copiedUnit)
+		status = s.fw.RunReservePluginsReserve(schedulingCycleCtx, copiedUnitInfo, res)
 		if status.Code() != framework.Success {
 			logger.Info("failed to reserve queueUnit", "reason", status.Message())
-			s.fw.RunReservePluginsUnreserve(schedulingCycleCtx, unitInfo)
-			s.ErrorFunc(ctx, unitInfo, q, status.Message(), finished, false)
+			s.fw.RunReservePluginsUnreserve(schedulingCycleCtx, copiedUnitInfo)
+			s.ErrorFunc(ctx, copiedUnitInfo, q, status.Message(), finished, false)
 			logger.V(2).Info("------------------ schedule end ------------------")
 			return
 		}
 
-		copiedUnit := unitInfo.Unit.DeepCopy()
-		copiedUnit.Status.Phase = v1alpha1.Dequeued
 		if matched := MatchedAdmissionChecks(copiedUnit, q.GetAdmissionChecks()); len(matched) > 0 {
 			copiedUnit.Status.Phase = v1alpha1.Reserved
 		} else if s.enableStrictDequeueMode && s.quotaListEnabled(logger, q.Name()) {
