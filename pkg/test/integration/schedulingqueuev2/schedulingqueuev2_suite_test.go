@@ -19,7 +19,7 @@ import (
 	"github.com/koordinator-sh/koord-queue/pkg/queue"
 	"github.com/koordinator-sh/koord-queue/pkg/queue/multischedulingqueue"
 	"github.com/koordinator-sh/koord-queue/pkg/scheduler"
-		"github.com/koordinator-sh/koord-queue/pkg/test/testutils"
+	"github.com/koordinator-sh/koord-queue/pkg/test/testutils"
 	"github.com/koordinator-sh/koord-queue/pkg/test/testutils/queueunits"
 	"github.com/koordinator-sh/koord-queue/pkg/utils"
 	. "github.com/onsi/ginkgo/v2"
@@ -121,7 +121,7 @@ var _ = Describe("SchedulingQueueV2", Ordered, func() {
 			Min(corev1.ResourceList{"cpu": resource.MustParse("0")}).
 			Obj()
 		eqcli.SchedulingV1alpha1().ElasticQuotas("default").Create(context.Background(), eqBlock, metav1.CreateOptions{})
-		
+
 		eqPriority := queueunits.MakeElasticQuota("test-queue-priority", "default").
 			QueuePolicy("Priority").
 			Max(corev1.ResourceList{"cpu": resource.MustParse("2")}).
