@@ -17,10 +17,11 @@ import (
 	"github.com/koordinator-sh/koord-queue/pkg/controllers"
 	"github.com/koordinator-sh/koord-queue/pkg/framework"
 	eqversioned "github.com/koordinator-sh/koord-queue/pkg/framework/apis/elasticquota/client/clientset/versioned"
-	elasticquotatree "github.com/koordinator-sh/koord-queue/pkg/framework/plugins/elasticquota"
+	"github.com/koordinator-sh/koord-queue/pkg/framework/plugins/elasticquotav1alpha1"
 	"github.com/koordinator-sh/koord-queue/pkg/queue"
 	"github.com/koordinator-sh/koord-queue/pkg/queue/multischedulingqueue"
 	"github.com/koordinator-sh/koord-queue/pkg/scheduler"
+	"github.com/koordinator-sh/koord-queue/pkg/queue/queuepolicies"
 	"github.com/koordinator-sh/koord-queue/pkg/test/testutils"
 	"github.com/koordinator-sh/koord-queue/pkg/test/testutils/queueunits"
 	"github.com/koordinator-sh/koord-queue/pkg/utils"
@@ -47,7 +48,7 @@ func TestIntelligentQueue(t *testing.T) {
 }
 
 var _ = Describe("IntelligentQueue", Ordered, func() {
-	os.Setenv("QueueGroupPlugin", "elasticquota")
+	os.Setenv("QueueGroupPlugin", "elasticquotav2")
 	os.Setenv("TestENV", "true")
 	options.SetDefaultPreemptibleForTest(true)
 
@@ -72,7 +73,7 @@ var _ = Describe("IntelligentQueue", Ordered, func() {
 	BeforeAll(func() {
 		ctx, cancel = context.WithCancel(context.Background())
 		fw, plgs, cli = testutils.NewFrameworkForTesting()
-		eqcli = plgs["ElasticQuota"].(*elasticquotatree.ElasticQuota).GetClient()
+		eqcli = plgs[elasticquotav1alpha1.Name].(*elasticquotav1alpha1.ElasticQuota).GetClient()
 		kubeCli = fake.NewSimpleClientset()
 
 		// Create event broadcaster
@@ -96,21 +97,8 @@ var _ = Describe("IntelligentQueue", Ordered, func() {
 			return []string{qu.Annotations["kube-queue/quota-fullname"]}, nil
 		}})
 
-		// Create the Intelligent Queue BEFORE starting informer
-		// so it gets loaded into the cache
-		fw.QueueUnitClient().SchedulingV1alpha1().Queues("koord-queue").Create(context.Background(), &v1alpha1.Queue{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "test-intelligent-queue",
-				Namespace: "koord-queue",
-				Annotations: map[string]string{
-					"koord-queue/priority-threshold":           "4",
-					"koord-queue/available-quota":              "child-1",
-					"koord-queue/queue-items-refresh-interval": "100ms", // Fast refresh for testing
-				}},
-			Spec: v1alpha1.QueueSpec{
-				QueuePolicy: "Intelligent",
-			},
-		}, metav1.CreateOptions{})
+		// Queue will be auto-created from ElasticQuota by the handler
+		// Additional annotations set after ElasticQuota creation
 
 		var (
 			multiQueue queue.MultiSchedulingQueue
@@ -132,22 +120,29 @@ var _ = Describe("IntelligentQueue", Ordered, func() {
 		queueUnitInformerFactory.WaitForCacheSync(wait.NeverStop)
 		go controller.Start(ctx)
 
-		// Create ElasticQuotaTree with limited resources to prevent immediate scheduling
-		// This keeps tasks in queue so we can verify their positions
-		root := queueunits.ElasticQuotaTree(
-			corev1.ResourceList{"cpu": resource.MustParse("100m")},
-			corev1.ResourceList{"cpu": resource.MustParse("100m")}) // max=100m prevents scheduling (jobs request 1 CPU)
-		root.Child("child-1", []string{"default"},
-			corev1.ResourceList{"cpu": resource.MustParse("100m")},
-			corev1.ResourceList{"cpu": resource.MustParse("100m")}) // max=100m prevents scheduling (jobs request 1 CPU)
-		eqcli.SchedulingV1beta1().ElasticQuotaTrees("kube-system").Create(context.Background(), root.Obj(), metav1.CreateOptions{})
-
-		// Update namespace with available queue
-		kubeCli.CoreV1().Namespaces().Update(context.Background(),
-			&corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "default",
-				Annotations: map[string]string{"kube-queue/available-queue": "{\"test-intelligent-queue\":[\"*\"]}"}}},
-			metav1.UpdateOptions{})
-
+		// Create ElasticQuota with Intelligent queue policy
+		// The handler will auto-create Queue with same name
+		eq := queueunits.MakeElasticQuota("test-intelligent-queue", "default").
+			QueuePolicy("Intelligent").
+			Max(corev1.ResourceList{"cpu": resource.MustParse("100m")}).
+			Min(corev1.ResourceList{"cpu": resource.MustParse("100m")}).
+			Obj()
+		eqcli.SchedulingV1alpha1().ElasticQuotas("default").Create(context.Background(), eq, metav1.CreateOptions{})
+		
+		// Update auto-created Queue with additional annotations
+		Eventually(func() error {
+			queue, err := fw.QueueUnitClient().SchedulingV1alpha1().Queues("koord-queue").Get(context.Background(), "test-intelligent-queue", metav1.GetOptions{})
+			if err != nil {
+				return err
+			}
+			if queue.Annotations == nil {
+				queue.Annotations = make(map[string]string)
+			}
+			queue.Annotations[queuepolicies.PriorityThresholdAnnotationKey] = "4"
+			queue.Annotations["koord-queue/queue-items-refresh-interval"] = "100ms"
+			_, err = fw.QueueUnitClient().SchedulingV1alpha1().Queues("koord-queue").Update(context.Background(), queue, metav1.UpdateOptions{})
+			return err
+		}, time.Second*10, time.Millisecond*100).Should(BeNil())
 		// Wait for queue to be ready and loaded by controller
 		time.Sleep(time.Second * 5)
 	})
@@ -169,21 +164,21 @@ var _ = Describe("IntelligentQueue", Ordered, func() {
 				queueunits.MakeQueueUnit("high-prio-job-1", "default").
 					Resources(map[string]int64{"cpu": 1}).
 					Annotations(map[string]string{"koord-queue/queue-name": "test-intelligent-queue"}).
-					Labels(map[string]string{"quota.scheduling.alibabacloud.com/name": "child-1"}).
+					Labels(map[string]string{"quota.scheduling.koordinator.sh/name": "test-intelligent-queue"}).
 					Priority(5).QueueUnit(),
 
 				// High priority job 2: priority=4, submitted second
 				queueunits.MakeQueueUnit("high-prio-job-2", "default").
 					Resources(map[string]int64{"cpu": 1}).
 					Annotations(map[string]string{"koord-queue/queue-name": "test-intelligent-queue"}).
-					Labels(map[string]string{"quota.scheduling.alibabacloud.com/name": "child-1"}).
+					Labels(map[string]string{"quota.scheduling.koordinator.sh/name": "test-intelligent-queue"}).
 					Priority(4).QueueUnit(),
 
 				// High priority job 3: priority=6, submitted third (highest priority)
 				queueunits.MakeQueueUnit("high-prio-job-3", "default").
 					Resources(map[string]int64{"cpu": 1}).
 					Annotations(map[string]string{"koord-queue/queue-name": "test-intelligent-queue"}).
-					Labels(map[string]string{"quota.scheduling.alibabacloud.com/name": "child-1"}).
+					Labels(map[string]string{"quota.scheduling.koordinator.sh/name": "test-intelligent-queue"}).
 					Priority(6).QueueUnit(),
 			}
 		})
@@ -273,21 +268,21 @@ var _ = Describe("IntelligentQueue", Ordered, func() {
 				queueunits.MakeQueueUnit("low-prio-job-1", "default").
 					Resources(map[string]int64{"cpu": 1}).
 					Annotations(map[string]string{"koord-queue/queue-name": "test-intelligent-queue"}).
-					Labels(map[string]string{"quota.scheduling.alibabacloud.com/name": "child-1"}).
+					Labels(map[string]string{"quota.scheduling.koordinator.sh/name": "test-intelligent-queue"}).
 					Priority(1).QueueUnit(),
 
 				// Low priority job 2: priority=3, submitted second
 				queueunits.MakeQueueUnit("low-prio-job-2", "default").
 					Resources(map[string]int64{"cpu": 1}).
 					Annotations(map[string]string{"koord-queue/queue-name": "test-intelligent-queue"}).
-					Labels(map[string]string{"quota.scheduling.alibabacloud.com/name": "child-1"}).
+					Labels(map[string]string{"quota.scheduling.koordinator.sh/name": "test-intelligent-queue"}).
 					Priority(3).QueueUnit(),
 
 				// Low priority job 3: priority=2, submitted third
 				queueunits.MakeQueueUnit("low-prio-job-3", "default").
 					Resources(map[string]int64{"cpu": 1}).
 					Annotations(map[string]string{"koord-queue/queue-name": "test-intelligent-queue"}).
-					Labels(map[string]string{"quota.scheduling.alibabacloud.com/name": "child-1"}).
+					Labels(map[string]string{"quota.scheduling.koordinator.sh/name": "test-intelligent-queue"}).
 					Priority(2).QueueUnit(),
 			}
 		})
@@ -373,26 +368,26 @@ var _ = Describe("IntelligentQueue", Ordered, func() {
 				queueunits.MakeQueueUnit("high-job-1", "default").
 					Resources(map[string]int64{"cpu": 1}).
 					Annotations(map[string]string{"koord-queue/queue-name": "test-intelligent-queue"}).
-					Labels(map[string]string{"quota.scheduling.alibabacloud.com/name": "child-1"}).
+					Labels(map[string]string{"quota.scheduling.koordinator.sh/name": "test-intelligent-queue"}).
 					Priority(5).QueueUnit(),
 
 				queueunits.MakeQueueUnit("high-job-2", "default").
 					Resources(map[string]int64{"cpu": 1}).
 					Annotations(map[string]string{"koord-queue/queue-name": "test-intelligent-queue"}).
-					Labels(map[string]string{"quota.scheduling.alibabacloud.com/name": "child-1"}).
+					Labels(map[string]string{"quota.scheduling.koordinator.sh/name": "test-intelligent-queue"}).
 					Priority(4).QueueUnit(),
 
 				// Low priority jobs (should be after high priority, in priority order)
 				queueunits.MakeQueueUnit("low-job-1", "default").
 					Resources(map[string]int64{"cpu": 1}).
 					Annotations(map[string]string{"koord-queue/queue-name": "test-intelligent-queue"}).
-					Labels(map[string]string{"quota.scheduling.alibabacloud.com/name": "child-1"}).
+					Labels(map[string]string{"quota.scheduling.koordinator.sh/name": "test-intelligent-queue"}).
 					Priority(1).QueueUnit(),
 
 				queueunits.MakeQueueUnit("low-job-2", "default").
 					Resources(map[string]int64{"cpu": 1}).
 					Annotations(map[string]string{"koord-queue/queue-name": "test-intelligent-queue"}).
-					Labels(map[string]string{"quota.scheduling.alibabacloud.com/name": "child-1"}).
+					Labels(map[string]string{"quota.scheduling.koordinator.sh/name": "test-intelligent-queue"}).
 					Priority(3).QueueUnit(),
 			}
 		})
@@ -493,21 +488,21 @@ var _ = Describe("IntelligentQueue", Ordered, func() {
 				queueunits.MakeQueueUnit("threshold-job", "default").
 					Resources(map[string]int64{"cpu": 1}).
 					Annotations(map[string]string{"koord-queue/queue-name": "test-intelligent-queue"}).
-					Labels(map[string]string{"quota.scheduling.alibabacloud.com/name": "child-1"}).
+					Labels(map[string]string{"quota.scheduling.koordinator.sh/name": "test-intelligent-queue"}).
 					Priority(4).QueueUnit(),
 
 				// Just below threshold (priority=3) - should go to low priority queue
 				queueunits.MakeQueueUnit("below-threshold-job", "default").
 					Resources(map[string]int64{"cpu": 1}).
 					Annotations(map[string]string{"koord-queue/queue-name": "test-intelligent-queue"}).
-					Labels(map[string]string{"quota.scheduling.alibabacloud.com/name": "child-1"}).
+					Labels(map[string]string{"quota.scheduling.koordinator.sh/name": "test-intelligent-queue"}).
 					Priority(3).QueueUnit(),
 
 				// Above threshold (priority=5) - should go to high priority queue
 				queueunits.MakeQueueUnit("above-threshold-job", "default").
 					Resources(map[string]int64{"cpu": 1}).
 					Annotations(map[string]string{"koord-queue/queue-name": "test-intelligent-queue"}).
-					Labels(map[string]string{"quota.scheduling.alibabacloud.com/name": "child-1"}).
+					Labels(map[string]string{"quota.scheduling.koordinator.sh/name": "test-intelligent-queue"}).
 					Priority(5).QueueUnit(),
 			}
 		})
@@ -594,21 +589,21 @@ var _ = Describe("IntelligentQueue", Ordered, func() {
 			highPrioLargeJob = queueunits.MakeQueueUnit("high-prio-large-job", "default").
 				Resources(map[string]int64{"cpu": 2}). // Large requirement: 2 CPU
 				Annotations(map[string]string{"koord-queue/queue-name": "test-intelligent-queue"}).
-				Labels(map[string]string{"quota.scheduling.alibabacloud.com/name": "child-1"}).
+				Labels(map[string]string{"quota.scheduling.koordinator.sh/name": "test-intelligent-queue"}).
 				Priority(5).QueueUnit()
 
 			// Low priority task 1: small resource requirement (0.1 CPU)
 			lowPrioSmallJob1 = queueunits.MakeQueueUnit("low-prio-small-job-1", "default").
 				Resources(map[string]int64{"cpu": 100}). // Small requirement: 100 millicpu = 0.1 CPU
 				Annotations(map[string]string{"koord-queue/queue-name": "test-intelligent-queue"}).
-				Labels(map[string]string{"quota.scheduling.alibabacloud.com/name": "child-1"}).
+				Labels(map[string]string{"quota.scheduling.koordinator.sh/name": "test-intelligent-queue"}).
 				Priority(1).QueueUnit()
 
 			// Low priority task 2: small resource requirement (0.1 CPU)
 			lowPrioSmallJob2 = queueunits.MakeQueueUnit("low-prio-small-job-2", "default").
 				Resources(map[string]int64{"cpu": 100}). // Small requirement: 100 millicpu = 0.1 CPU
 				Annotations(map[string]string{"koord-queue/queue-name": "test-intelligent-queue"}).
-				Labels(map[string]string{"quota.scheduling.alibabacloud.com/name": "child-1"}).
+				Labels(map[string]string{"quota.scheduling.koordinator.sh/name": "test-intelligent-queue"}).
 				Priority(2).QueueUnit()
 		})
 
@@ -724,7 +719,7 @@ var _ = Describe("IntelligentQueue", Ordered, func() {
 			highPrioBlockingJob = queueunits.MakeQueueUnit("high-blocking-job", "default").
 				Resources(map[string]int64{"cpu": 10}). // 10 CPU - impossible to satisfy
 				Annotations(map[string]string{"koord-queue/queue-name": "test-intelligent-queue"}).
-				Labels(map[string]string{"quota.scheduling.alibabacloud.com/name": "child-1"}).
+				Labels(map[string]string{"quota.scheduling.koordinator.sh/name": "test-intelligent-queue"}).
 				Priority(5).QueueUnit()
 
 			// Create 5 low priority small tasks that can be scheduled
@@ -736,7 +731,7 @@ var _ = Describe("IntelligentQueue", Ordered, func() {
 				lowPrioJobs[i] = queueunits.MakeQueueUnit(jobName, "default").
 					Resources(map[string]int64{"cpu": 200}). // 200 millicpu = 0.2 CPU each
 					Annotations(map[string]string{"koord-queue/queue-name": "test-intelligent-queue"}).
-					Labels(map[string]string{"quota.scheduling.alibabacloud.com/name": "child-1"}).
+					Labels(map[string]string{"quota.scheduling.koordinator.sh/name": "test-intelligent-queue"}).
 					Priority(int32(1 + i%3)). // Vary priorities: 1, 2, 3, 1, 2
 					QueueUnit()
 			}
@@ -887,7 +882,7 @@ var _ = Describe("IntelligentQueue", Ordered, func() {
 				unschedulableLowPrioJobs[i] = queueunits.MakeQueueUnit(jobName, "default").
 					Resources(map[string]int64{"cpu": 2000}). // 2000 millicpu = 2 CPU - cannot schedule
 					Annotations(map[string]string{"koord-queue/queue-name": "test-intelligent-queue"}).
-					Labels(map[string]string{"quota.scheduling.alibabacloud.com/name": "child-1"}).
+					Labels(map[string]string{"quota.scheduling.koordinator.sh/name": "test-intelligent-queue"}).
 					Priority(int32(1 + i%3)). // Vary priorities: 1, 2, 3, 1, 2, 3, ...
 					QueueUnit()
 			}
@@ -896,7 +891,7 @@ var _ = Describe("IntelligentQueue", Ordered, func() {
 			schedulableLowPrioJob = queueunits.MakeQueueUnit("schedulable-low-job", "default").
 				MilliResources(map[string]int64{"cpu": 1}). // 0 CPU - can schedule
 				Annotations(map[string]string{"koord-queue/queue-name": "test-intelligent-queue"}).
-				Labels(map[string]string{"quota.scheduling.alibabacloud.com/name": "child-1"}).
+				Labels(map[string]string{"quota.scheduling.koordinator.sh/name": "test-intelligent-queue"}).
 				Priority(1).
 				QueueUnit()
 		})

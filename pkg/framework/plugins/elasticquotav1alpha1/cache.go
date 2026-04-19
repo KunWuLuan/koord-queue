@@ -12,7 +12,6 @@ import (
 	"github.com/koordinator-sh/koord-queue/pkg/framework"
 	"github.com/koordinator-sh/koord-queue/pkg/metrics"
 
-	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -30,6 +29,10 @@ type Cache interface {
 	DeleteQuota(q *v1alpha1.ElasticQuota)
 	GetElasticQuotaInfo4Test(quotaName string) *ElasticQuotaInfo
 	GetReserved() map[types.UID]string
+	IsReserved(uid types.UID) bool
+	MarkScheduling(uid types.UID)
+	ClearScheduling(uid types.UID)
+	IsScheduling(uid types.UID) bool
 }
 
 var once sync.Once
@@ -39,6 +42,7 @@ type cacheImpl struct {
 	lock sync.RWMutex
 
 	reserved    map[types.UID]string
+	scheduling  map[types.UID]bool // Track queueUnits that are being scheduled (between Reserve and DequeueComplete)
 	quotas      map[string]*ElasticQuotaInfo
 	quotaParent map[string]string
 }
@@ -54,6 +58,7 @@ func buildCache() *cacheImpl {
 	internalCache = &cacheImpl{
 		quotas:      make(map[string]*ElasticQuotaInfo),
 		reserved:    make(map[types.UID]string),
+		scheduling:  make(map[types.UID]bool),
 		quotaParent: make(map[string]string),
 	}
 	go wait.Until(internalCache.updateUsageMetrics, time.Second*5, wait.NeverStop)
@@ -223,19 +228,13 @@ func (c *cacheImpl) AddOrUpdateQuota(q *v1alpha1.ElasticQuota) {
 		klog.Infof("create quotaInfo success, quotaName:%v, parentName:%v, min:%v, max:%v",
 			key(q), getParentQuotaName(q), info.Min, info.Max)
 	} else {
+		// Replace entire Max/Min to avoid stale keys from previous updates
+		info.Max = utils.TransResourceList(q.Spec.Max)
+		info.Min = utils.TransResourceList(q.Spec.Min)
 		klog.Infof("update quotaInfo success, quotaName:%v, parentName:%v, oldMin:%v, newMin:%v,"+
 			"oldMax:%v, newMax:%v", key(q), getParentQuotaName(q), info.Min, utils.TransResourceList(q.Spec.Min),
 			info.Max, utils.TransResourceList(q.Spec.Max))
 
-		// Replace entire Max/Min to avoid stale keys from previous updates
-		info.Max = make(map[v1.ResourceName]int64, len(q.Spec.Max))
-		for k, v := range q.Spec.Max {
-			info.Max[k] = v.Value()
-		}
-		info.Min = make(map[v1.ResourceName]int64, len(q.Spec.Min))
-		for k, v := range q.Spec.Min {
-			info.Min[k] = v.Value()
-		}
 		info.Quota = q
 	}
 
@@ -265,6 +264,37 @@ func (c *cacheImpl) GetReserved() map[types.UID]string {
 	return result
 }
 
+func (c *cacheImpl) IsReserved(uid types.UID) bool {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+
+	_, exist := c.reserved[uid]
+	return exist
+}
+
+func (c *cacheImpl) MarkScheduling(uid types.UID) {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
+	c.scheduling[uid] = true
+	klog.V(4).Infof("Mark queueUnit as scheduling: %v", uid)
+}
+
+func (c *cacheImpl) ClearScheduling(uid types.UID) {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
+	delete(c.scheduling, uid)
+	klog.V(4).Infof("Clear scheduling mark for queueUnit: %v", uid)
+}
+
+func (c *cacheImpl) IsScheduling(uid types.UID) bool {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+
+	return c.scheduling[uid]
+}
+
 func (c *cacheImpl) GetElasticQuotaInfo4Test(quotaName string) *ElasticQuotaInfo {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
@@ -273,6 +303,8 @@ func (c *cacheImpl) GetElasticQuotaInfo4Test(quotaName string) *ElasticQuotaInfo
 }
 
 func (c *cacheImpl) updateUsageMetrics() {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
 	for name, quota := range c.quotas {
 		for k, v := range quota.Used {
 			metrics.QuotaUsageByQuota.WithLabelValues(name, string(k)).Set(float64(v))

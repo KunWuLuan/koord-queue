@@ -6,15 +6,12 @@ import (
 	queuev1alpha1 "github.com/koordinator-sh/koord-queue/pkg/apis/scheduling/v1alpha1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/klog/v2"
 
-	"github.com/koordinator-sh/koord-queue/pkg/framework"
 	"github.com/koordinator-sh/koord-queue/pkg/framework/apis/elasticquota/scheduling/v1alpha1"
 	"github.com/koordinator-sh/koord-queue/pkg/queue/queuepolicies"
-	"github.com/koordinator-sh/koord-queue/pkg/queue/queuepolicies/schedulingqueuev2"
 	"github.com/koordinator-sh/koord-queue/pkg/utils"
 )
 
@@ -33,16 +30,7 @@ func (eq *ElasticQuota) Add(obj interface{}) {
 	eq.tryCreateOrUpdateQueueCr(elasticQuota)
 	eq.cache.AddOrUpdateQuota(elasticQuota)
 
-	qus, err := eq.queueUnitLister.List(labels.Everything())
-	if err != nil {
-		panic(err)
-	}
-	for _, qu := range qus {
-		if len(qu.Status.Admissions) == 0 {
-			continue
-		}
-		eq.Reserve(context.Background(), framework.NewQueueUnitInfo(qu), nil)
-	}
+	klog.Infof("Add ElasticQuota, %v", elasticQuota.Name)
 }
 
 func (eq *ElasticQuota) Update(oldObj, newObj interface{}) {
@@ -111,7 +99,7 @@ func (eq *ElasticQuota) tryCreateOrUpdateQueueCr(elasticQuota *v1alpha1.ElasticQ
 				klog.Infof("failed update queue Cr, queueName:%v, err:%v", newQueueCr.Name, errUpdate.Error())
 				return errUpdate
 			} else {
-				klog.Infof("success update queue Cr, queueName:%v", newQueueCr.Name)
+				klog.V(4).Infof("success update queue Cr, queueName:%v", newQueueCr.Name)
 				return nil
 			}
 		} else {
@@ -123,7 +111,7 @@ func (eq *ElasticQuota) tryCreateOrUpdateQueueCr(elasticQuota *v1alpha1.ElasticQ
 					klog.Infof("failed create queue Cr, queueName:%v, err:%v", newQueueCr.Name, errCreate.Error())
 					return errCreate
 				} else {
-					klog.Infof("success create queue Cr, queueName:%v", newQueueCr.Name)
+					klog.V(4).Infof("success create queue Cr, queueName:%v", newQueueCr.Name)
 					return nil
 				}
 			} else {
@@ -144,11 +132,6 @@ func makeNewestQueueCr(existQueue *queuev1alpha1.Queue, elasticQuota *v1alpha1.E
 		newQueue.Annotations = make(map[string]string)
 		if elasticQuota.Annotations != nil {
 			newQueue.Annotations[utils.QuotaKoordQueueEnable] = elasticQuota.Annotations[utils.QuotaKoordQueueEnable]
-			// newQueue.Annotations[strategy.MaxFIFOWaitTimeInSecond] = elasticQuota.Annotations[strategy.MaxFIFOWaitTimeInSecond]
-			// newQueue.Annotations[strategy.IntelligentPriorityLevels] = elasticQuota.Annotations[strategy.IntelligentPriorityLevels]
-			// newQueue.Annotations[strategy.IntelligentAdjustWeightMaxPriority] = elasticQuota.Annotations[strategy.IntelligentAdjustWeightMaxPriority]
-			// newQueue.Annotations[strategy.IntelligentAdjustWeightStepToNextPriority] = elasticQuota.Annotations[strategy.IntelligentAdjustWeightStepToNextPriority]
-			// newQueue.Annotations[api.UserQuotaAnnotationConfig] = elasticQuota.Annotations[api.UserQuotaAnnotationConfig]
 		}
 
 		newQueue.Labels = make(map[string]string)
@@ -168,15 +151,6 @@ func makeNewestQueueCr(existQueue *queuev1alpha1.Queue, elasticQuota *v1alpha1.E
 				"Priority")
 		}
 		newQueue.Spec.QueuePolicy = queuev1alpha1.QueuePolicy(newPolicy)
-
-		// klog.Infof("success to make and create new queue in local, queueName:%v, priority:%v, policy:%v, "+
-		// 	"queueEnable:%v, maxFIFOWaitTimeInSecond:%v, intelligentPriorityLevels:%v, "+
-		// 	"intelligentAdjustWeightMaxPriority:%v, intelligentAdjustWeightStepToNextPriority:%v,"+
-		// 	"UserQuotaAnnotationConfig:%v", newQueue.Name, *newQueue.Spec.Priority, newQueue.Spec.QueuePolicy,
-		// 	newQueue.Annotations[utils.QuotaKoordQueueEnable])
-		// newQueue.Annotations[strategy.MaxFIFOWaitTimeInSecond],
-		// newQueue.Annotations[strategy.IntelligentPriorityLevels], newQueue.Annotations[strategy.IntelligentAdjustWeightMaxPriority],
-		// newQueue.Annotations[strategy.IntelligentAdjustWeightStepToNextPriority], newQueue.Annotations[api.UserQuotaAnnotationConfig])
 
 		return newQueue, true
 	} else {
@@ -203,11 +177,6 @@ func makeNewestQueueCr(existQueue *queuev1alpha1.Queue, elasticQuota *v1alpha1.E
 				newQueue.Annotations = make(map[string]string)
 			}
 			newQueue.Annotations[utils.QuotaKoordQueueEnable] = elasticQuota.Annotations[utils.QuotaKoordQueueEnable]
-			// newQueue.Annotations[strategy.MaxFIFOWaitTimeInSecond] = elasticQuota.Annotations[strategy.MaxFIFOWaitTimeInSecond]
-			// newQueue.Annotations[strategy.IntelligentPriorityLevels] = elasticQuota.Annotations[strategy.IntelligentPriorityLevels]
-			// newQueue.Annotations[strategy.IntelligentAdjustWeightMaxPriority] = elasticQuota.Annotations[strategy.IntelligentAdjustWeightMaxPriority]
-			// newQueue.Annotations[strategy.IntelligentAdjustWeightStepToNextPriority] = elasticQuota.Annotations[strategy.IntelligentAdjustWeightStepToNextPriority]
-			// newQueue.Annotations[api.UserQuotaAnnotationConfig] = elasticQuota.Annotations[api.UserQuotaAnnotationConfig]
 
 			if newQueue.Labels == nil {
 				newQueue.Labels = make(map[string]string)
@@ -216,11 +185,6 @@ func makeNewestQueueCr(existQueue *queuev1alpha1.Queue, elasticQuota *v1alpha1.E
 				newQueue.Labels[utils.ParentQuotaNameLabelKey] = elasticQuota.Labels[utils.ParentQuotaNameLabelKey]
 			}
 
-			// klog.Infof("success to make and update exist queue in local, queueName:%v, oldPolicy:%v, newPolicy:%v, "+
-			// 	"queueEnable:%v, maxFIFOWaitTimeInSecond:%v, intelligentPriorityLevels:%v, "+
-			// 	"intelligentAdjustWeightMaxPriority:%v, intelligentAdjustWeightStepToNextPriority:%v,"+
-			// 	"UserQuotaAnnotationConfig:%v", newQueue.Name, existQueue.Spec.QueuePolicy, newQueue.Spec.QueuePolicy,
-			// 	newQueue.Annotations[utils.QuotaKoordQueueEnable])
 			return newQueue, true
 		}
 
@@ -228,15 +192,22 @@ func makeNewestQueueCr(existQueue *queuev1alpha1.Queue, elasticQuota *v1alpha1.E
 	}
 }
 
+// allSupportedPolicies contains all supported queue policies
+var allSupportedPolicies = []string{
+	queuepolicies.Priority,
+	queuepolicies.Block,
+	queuepolicies.Round,
+	queuepolicies.Intelligent,
+}
+
 func findMatchedSupportPolicy(elasticQuota *v1alpha1.ElasticQuota) string {
 	newPolicy := ""
 	if elasticQuota.Labels != nil && elasticQuota.Labels[queuepolicies.QueuePolicyLabelKey] != "" {
-		if newPolicy == "" {
-			for _, supportPolicy := range schedulingqueuev2.SupportedPolicy {
-				if supportPolicy == elasticQuota.Labels[queuepolicies.QueuePolicyLabelKey] {
-					newPolicy = supportPolicy
-					break
-				}
+		requestedPolicy := elasticQuota.Labels[queuepolicies.QueuePolicyLabelKey]
+		for _, supportPolicy := range allSupportedPolicies {
+			if supportPolicy == requestedPolicy {
+				newPolicy = supportPolicy
+				break
 			}
 		}
 	}

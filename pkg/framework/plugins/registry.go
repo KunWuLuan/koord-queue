@@ -24,14 +24,13 @@ import (
 
 	"github.com/koordinator-sh/koord-queue/pkg/framework"
 	"github.com/koordinator-sh/koord-queue/pkg/framework/plugins/defaultgroup"
-	elasticquota "github.com/koordinator-sh/koord-queue/pkg/framework/plugins/elasticquota"
 	"github.com/koordinator-sh/koord-queue/pkg/framework/plugins/elasticquotav1alpha1"
 	"github.com/koordinator-sh/koord-queue/pkg/framework/plugins/priority"
 	"github.com/koordinator-sh/koord-queue/pkg/framework/plugins/resourcequota"
 	"github.com/koordinator-sh/koord-queue/pkg/framework/runtime"
 )
 
-// NewInTreeRegistry builds the registry with all the in-tree plugins.
+// NewInTreeRegistry builds the registry with asll the in-tree plugins.
 // A scheduler that runs out of tree plugins can register additional plugins
 // through the WithFrameworkOutOfTreeRegistry option.
 func NewInTreeRegistry() runtime.Registry {
@@ -39,7 +38,6 @@ func NewInTreeRegistry() runtime.Registry {
 		priority.Name:             priority.New,
 		defaultgroup.Name:         defaultgroup.New,
 		resourcequota.Name:        resourcequota.New,
-		elasticquota.Name:         elasticquota.New,
 		elasticquotav1alpha1.Name: elasticquotav1alpha1.New,
 	}
 }
@@ -65,17 +63,12 @@ func NewFakeRegistry() (runtime.Registry, map[string]framework.Plugin) {
 			defaultgroup.Name:  pluginproxy(defaultgroup.New, plugins),
 			resourcequota.Name: pluginproxy(resourcequota.New, plugins),
 		}, plugins
-	case "elasticquota":
-		return runtime.Registry{
-			priority.Name:     pluginproxy(priority.New, plugins),
-			elasticquota.Name: pluginproxy(elasticquota.FakeNew, plugins),
-		}, plugins
 	case "elasticquotav2":
 		return runtime.Registry{
-			priority.Name:     pluginproxy(priority.New, plugins),
-			elasticquota.Name: pluginproxy(elasticquotav1alpha1.FakeNew, plugins),
+			priority.Name:             pluginproxy(priority.New, plugins),
+			elasticquotav1alpha1.Name: pluginproxy(elasticquotav1alpha1.FakeNew, plugins),
 		}, plugins
 	default:
-		panic("QueueGroupPlugin must be in [resourceQuota|elasticquota]")
+		panic("QueueGroupPlugin must be in [resourceQuota|elasticquotav2]")
 	}
 }

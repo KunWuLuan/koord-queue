@@ -44,14 +44,12 @@ import (
 
 	koordinatorschedulerv1alpha1 "github.com/koordinator-sh/apis/scheduling/v1alpha1"
 	"github.com/koordinator-sh/koord-queue/pkg/apis/scheduling/v1alpha1"
-	elasticquotatree "github.com/koordinator-sh/koord-queue/pkg/framework/plugins/elasticquota"
 	admissioncontroller "github.com/koordinator-sh/koord-queue/pkg/jobext/admission"
 	networkv1alpha1 "github.com/koordinator-sh/koord-queue/pkg/jobext/apis/networkaware/apis/scheduling/v1alpha1"
 	"github.com/koordinator-sh/koord-queue/pkg/jobext/framework"
 	"github.com/koordinator-sh/koord-queue/pkg/jobext/registry"
 	"github.com/koordinator-sh/koord-queue/pkg/jobext/reservation"
 	"github.com/koordinator-sh/koord-queue/pkg/jobext/util"
-	"github.com/koordinator-sh/koord-queue/pkg/nscontroller"
 	"gopkg.in/yaml.v3"
 )
 
@@ -208,11 +206,6 @@ func run(cfg *rest.Config, opt *ControllerOptions) error {
 		return err
 	}
 
-	// Setup Namespace Controller
-	if err := setupNamespaceController(mgr); err != nil {
-		return err
-	}
-
 	// Setup Job Extension Controllers
 	if opt.EnableJobExtensions && opt.EnabledExtensions != "" {
 		if err := setupJobExtensionControllers(mgr, opt, arg); err != nil {
@@ -233,17 +226,6 @@ func run(cfg *rest.Config, opt *ControllerOptions) error {
 }
 
 func setupCacheIndexes(mgr ctrl.Manager) error {
-	// Namespace index for available quotas
-	if err := mgr.GetCache().IndexField(context.Background(), &corev1.Namespace{}, "availableQuotas", func(o client.Object) []string {
-		ns, ok := o.(*corev1.Namespace)
-		if !ok {
-			return nil
-		}
-		return elasticquotatree.GetAvailableQuotasInNamespace(ns)
-	}); err != nil {
-		return fmt.Errorf("failed to set namespace index: %w", err)
-	}
-
 	// Pod index by owners
 	if err := mgr.GetCache().IndexField(context.Background(), &corev1.Pod{}, util.PodsByOwnersCacheFields, func(o client.Object) []string {
 		p, ok := o.(*corev1.Pod)
@@ -271,17 +253,6 @@ func setupCacheIndexes(mgr ctrl.Manager) error {
 		return fmt.Errorf("failed to set related queue unit index: %w", err)
 	}
 
-	return nil
-}
-
-func setupNamespaceController(mgr ctrl.Manager) error {
-	if err := (&nscontroller.NamespaceReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
-		return fmt.Errorf("unable to create namespace controller: %w", err)
-	}
-	setupLog.Info("namespace controller setup complete")
 	return nil
 }
 

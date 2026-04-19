@@ -8,11 +8,9 @@ import (
 	queueunitversioned "github.com/koordinator-sh/koord-queue/pkg/client/clientset/versioned"
 	clientv1alpha1 "github.com/koordinator-sh/koord-queue/pkg/client/informers/externalversions/scheduling/v1alpha1"
 	queuev1alpha1 "github.com/koordinator-sh/koord-queue/pkg/client/listers/scheduling/v1alpha1"
-	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/cache"
-	resourcehelpers "k8s.io/component-helpers/resource"
 	"k8s.io/klog/v2"
 
 	"github.com/koordinator-sh/koord-queue/pkg/framework"
@@ -46,6 +44,11 @@ var _ framework.QueueUnitInfoProvider = &ElasticQuota{}
 
 func (eq *ElasticQuota) GetQueueUnitQuotaName(qu *v1alpha1.QueueUnit) ([]string, error) {
 	return []string{getQuotaName(qu)}, nil
+}
+
+func (eq *ElasticQuota) GetClient() versioned.Interface {
+	// only for test
+	return eq.eqClient
 }
 
 const Name = "ElasticQuotaV2"
@@ -167,29 +170,8 @@ func (eq *ElasticQuota) Reserve(ctx context.Context, queueUnit *framework.QueueU
 	quotaName := getQuotaName(queueUnit.Unit)
 	ResourceUsageRecord(queueUnit.Unit.Spec.Resource, metrics.QuotaUsageByNamespace, queueUnit.Unit.Namespace, 1)
 
-	// Update queueUnit's Status.Admissions with the provided ads before reserving
-	// This ensures that GetReservedResource can correctly calculate the resource usage
-	if len(ads) > 0 && len(queueUnit.Unit.Status.Admissions) == 0 {
-		queueUnit.Unit.Status.Admissions = make([]v1alpha1.Admission, 0, len(ads))
-		for name, ad := range ads {
-			// Convert framework.Admission to v1alpha1.Admission
-			// Use Spec.Resource or Spec.Request to populate Resources field
-			v1Ad := v1alpha1.Admission{
-				Name:     name,
-				Replicas: ad.Replicas,
-			}
-			// Try to get resources from PodSets if available
-			for _, ps := range queueUnit.Unit.Spec.PodSets {
-				if ps.Name == name {
-					// Calculate resources based on PodSet template and replicas
-					specRequests := resourcehelpers.PodRequests(&v1.Pod{Spec: ps.Template.Spec}, resourcehelpers.PodResourcesOptions{})
-					v1Ad.Resources = specRequests
-					break
-				}
-			}
-			queueUnit.Unit.Status.Admissions = append(queueUnit.Unit.Status.Admissions, v1Ad)
-		}
-	}
+	// Mark this queueUnit as scheduling to prevent Resize operations
+	eq.cache.MarkScheduling(queueUnit.Unit.UID)
 
 	err := eq.cache.Reserve(quotaName, queueUnit)
 	if err != nil {
@@ -200,6 +182,13 @@ func (eq *ElasticQuota) Reserve(ctx context.Context, queueUnit *framework.QueueU
 }
 
 func (eq *ElasticQuota) Resize(ctx context.Context, old, new *framework.QueueUnitInfo) {
+	// Skip Resize if the queueUnit is being scheduled (between Reserve and DequeueComplete)
+	// This prevents resource calculation confusion from multiple updates during scheduling
+	if eq.cache.IsScheduling(new.Unit.UID) {
+		klog.V(4).Infof("Skip Resize for scheduling queueUnit: %v", new.Name)
+		return
+	}
+
 	err := eq.cache.Resize(old, new)
 	if err != nil {
 		klog.ErrorS(err, "fail to resize", "queueunit", new.Name)
@@ -222,6 +211,9 @@ func (eq *ElasticQuota) DequeueComplete(ctx context.Context, queueUnit *framewor
 	if err != nil {
 		klog.ErrorS(err, "fail to reserve", "queueunit", queueUnit.Name)
 	}
+
+	// Clear the scheduling mark to allow future Resize operations
+	eq.cache.ClearScheduling(queueUnit.Unit.UID)
 }
 
 func (eq *ElasticQuota) AddAssignedJob(ctx context.Context, queueUnit *framework.QueueUnitInfo) {

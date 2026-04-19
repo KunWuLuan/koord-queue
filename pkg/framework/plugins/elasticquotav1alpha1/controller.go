@@ -46,7 +46,6 @@ func (ctrl *Controller) syncQueueStatusWorker() {
 	summaries := ctrl.plugin.GetDebugInfoInternal(false)
 	for _, queue := range queues {
 		if summaries[queue.Name] == nil {
-			klog.Warningf("failed get queue summary for queue %v", queue.Name)
 			continue
 		}
 		ctrl.syncQueueStatus(queue, summaries[queue.Name])

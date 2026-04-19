@@ -22,11 +22,12 @@ func TestUpdateUsage(t *testing.T) {
 		a["mem"] = 5
 
 		b := make(v1.ResourceList)
-		b["cpu"] = resource.MustParse("3")
+		b["cpu"] = resource.MustParse("3") // 3 cores = 3000 milli-cores
 		b["xx"] = resource.MustParse("4")
 
 		UpdateUsage(a, TransResourceList(b), 2)
-		assert.Equal(t, a["cpu"], int64(16))
+		// CPU: 10 + 3000*2 = 6010 (milli-cores)
+		assert.Equal(t, a["cpu"], int64(6010))
 		assert.Equal(t, a["mem"], int64(5))
 		assert.Equal(t, a["xx"], int64(8))
 	}
@@ -39,11 +40,12 @@ func TestUpdateUsage2(t *testing.T) {
 		a["mem"] = 5
 
 		b := make(v1.ResourceList)
-		b["cpu"] = resource.MustParse("3")
+		b["cpu"] = resource.MustParse("3") // 3 cores = 3000 milli-cores
 		b["xx"] = resource.MustParse("4")
 
 		UpdateUsage(a, TransResourceList(b), 2)
-		assert.Equal(t, a["cpu"], int64(16))
+		// CPU: 10 + 3000*2 = 6010 (milli-cores)
+		assert.Equal(t, a["cpu"], int64(6010))
 		assert.Equal(t, a["mem"], int64(5))
 		assert.Equal(t, a["xx"], int64(8))
 	}
@@ -53,11 +55,12 @@ func TestUpdateUsage2(t *testing.T) {
 		a["mem"] = 5
 
 		b := make(v1.ResourceList)
-		b["cpu"] = resource.MustParse("3")
+		b["cpu"] = resource.MustParse("3") // 3 cores = 3000 milli-cores
 		b["xx"] = resource.MustParse("4")
 
 		UpdateUsage(a, TransResourceList(b), -2)
-		assert.Equal(t, a["cpu"], int64(4))
+		// CPU: 10 - 3000*2 = -5990 (milli-cores)
+		assert.Equal(t, a["cpu"], int64(-5990))
 		assert.Equal(t, a["mem"], int64(5))
 		assert.Equal(t, a["xx"], int64(-8))
 	}
@@ -71,11 +74,47 @@ func TestKey(t *testing.T) {
 }
 
 func TestTransResourceList(t *testing.T) {
-	res := v1.ResourceList{"cpu": resource.MustParse("5")}
-	result := TransResourceList(res)
+	tests := []struct {
+		name     string
+		input    v1.ResourceList
+		expected map[v1.ResourceName]int64
+	}{
+		{
+			name:     "cpu resource should use MilliValue",
+			input:    v1.ResourceList{"cpu": resource.MustParse("5")},
+			expected: map[v1.ResourceName]int64{"cpu": 5000}, // 5 cores = 5000 milli-cores
+		},
+		{
+			name:     "cpu with decimal should use MilliValue",
+			input:    v1.ResourceList{"cpu": resource.MustParse("0.5")},
+			expected: map[v1.ResourceName]int64{"cpu": 500}, // 0.5 cores = 500 milli-cores
+		},
+		{
+			name:     "memory resource should use Value",
+			input:    v1.ResourceList{"memory": resource.MustParse("1Gi")},
+			expected: map[v1.ResourceName]int64{"memory": 1073741824}, // 1Gi in bytes
+		},
+		{
+			name:     "mixed resources",
+			input:    v1.ResourceList{"cpu": resource.MustParse("2"), "memory": resource.MustParse("4Gi")},
+			expected: map[v1.ResourceName]int64{"cpu": 2000, "memory": 4294967296},
+		},
+		{
+			name:     "empty resource list",
+			input:    v1.ResourceList{},
+			expected: map[v1.ResourceName]int64{},
+		},
+	}
 
-	assert.Equal(t, 1, len(result))
-	assert.Equal(t, result["cpu"], int64(5))
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := TransResourceList(tt.input)
+			assert.Equal(t, len(tt.expected), len(result))
+			for k, v := range tt.expected {
+				assert.Equal(t, v, result[k], "resource %s should match", k)
+			}
+		})
+	}
 }
 
 func TestIsQueueUnitSuspend(t *testing.T) {
