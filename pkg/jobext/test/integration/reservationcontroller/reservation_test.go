@@ -13,9 +13,8 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/ptr"
 
-	jobv1 "github.com/koordinator-sh/koord-queue/pkg/jobext/apis/common/job_controller/v1"
-	pytorchv1 "github.com/koordinator-sh/koord-queue/pkg/jobext/apis/pytorch/v1"
 	"github.com/koordinator-sh/koord-queue/pkg/jobext/handles"
+	commonv1 "github.com/kubeflow/training-operator/pkg/apis/kubeflow.org/v1"
 	v1 "k8s.io/api/core/v1"
 )
 
@@ -23,7 +22,7 @@ var _ = Describe("PytorchJob Reservation", func() {
 	Context("Create a PyTorchJob and EnableReservation is True.", func() {
 		It("Reservation should be created. And when reservation is scheduled, queueUnit should be schedSucceed.", func() {
 
-			pytorchjob := &pytorchv1.PyTorchJob{
+			pytorchjob := &commonv1.PyTorchJob{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "pytorchjob-resv-test",
 					Namespace: "default",
@@ -31,9 +30,9 @@ var _ = Describe("PytorchJob Reservation", func() {
 						handles.QueueAnnotation: "true",
 					},
 				},
-				Spec: pytorchv1.PyTorchJobSpec{
-					PyTorchReplicaSpecs: map[pytorchv1.PyTorchReplicaType]*jobv1.ReplicaSpec{
-						"Master": &jobv1.ReplicaSpec{
+				Spec: commonv1.PyTorchJobSpec{
+					PyTorchReplicaSpecs: map[commonv1.ReplicaType]*commonv1.ReplicaSpec{
+						"Master": &commonv1.ReplicaSpec{
 							Replicas: ptr.To(int32(1)),
 							Template: v1.PodTemplateSpec{
 								Spec: v1.PodSpec{
@@ -51,7 +50,7 @@ var _ = Describe("PytorchJob Reservation", func() {
 								},
 							},
 						},
-						"Worker": &jobv1.ReplicaSpec{
+						"Worker": &commonv1.ReplicaSpec{
 							Replicas: ptr.To(int32(1)),
 							Template: v1.PodTemplateSpec{
 								Spec: v1.PodSpec{

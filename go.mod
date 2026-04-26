@@ -1,6 +1,6 @@
 module github.com/koordinator-sh/koord-queue
 
-go 1.24.2
+go 1.26.0
 
 require (
 	github.com/GoogleCloudPlatform/spark-on-k8s-operator v0.0.0-20231109204312-8cb6c8035eab
@@ -33,7 +33,7 @@ require (
 	k8s.io/utils v0.0.0-20250502105355-0f33e8f1c979
 	sigs.k8s.io/controller-runtime v0.19.3
 	sigs.k8s.io/kueue v0.8.1
-	sigs.k8s.io/scheduler-plugins v0.24.9
+	sigs.k8s.io/scheduler-plugins v0.28.9
 	sigs.k8s.io/structured-merge-diff/v4 v4.7.0
 	sigs.k8s.io/yaml v1.4.0
 )
@@ -81,6 +81,7 @@ require (
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.10 // indirect
+	github.com/kubeflow/training-operator v1.9.3 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect
 	github.com/leodido/go-urn v1.2.4 // indirect
 	github.com/mailru/easyjson v0.9.0 // indirect

@@ -18,13 +18,13 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/utils/ptr"
 	kueue "sigs.k8s.io/kueue/apis/kueue/v1beta1"
 	"sigs.k8s.io/scheduler-plugins/apis/scheduling/v1alpha1"
 
-	commonv1 "github.com/koordinator-sh/koord-queue/pkg/jobext/apis/common/job_controller/v1"
-	pytorchv1 "github.com/koordinator-sh/koord-queue/pkg/jobext/apis/pytorch/v1"
 	"github.com/koordinator-sh/koord-queue/pkg/jobext/framework"
 	"github.com/koordinator-sh/koord-queue/pkg/jobext/util"
+	commonv1 "github.com/kubeflow/training-operator/pkg/apis/kubeflow.org/v1"
 	v1 "k8s.io/api/core/v1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -48,10 +48,10 @@ type PytorchJob struct {
 }
 
 func (j *PytorchJob) Object() client.Object {
-	return &pytorchv1.PyTorchJob{}
+	return &commonv1.PyTorchJob{}
 }
 func (j *PytorchJob) DeepCopy(o client.Object) client.Object {
-	job, _ := o.(*pytorchv1.PyTorchJob)
+	job, _ := o.(*commonv1.PyTorchJob)
 	return job.DeepCopy()
 }
 
@@ -63,11 +63,11 @@ func (j *PytorchJob) GetPodSetName(ownerName string, p *v1.Pod) string {
 }
 
 func (j *PytorchJob) GVK() schema.GroupVersionKind {
-	return pytorchv1.SchemeGroupVersion.WithKind(pytorchv1.Kind)
+	return commonv1.SchemeGroupVersion.WithKind(commonv1.PyTorchJobKind)
 }
 
 func (j *PytorchJob) PodSet(ctx context.Context, obj client.Object) []kueue.PodSet {
-	job := obj.(*pytorchv1.PyTorchJob)
+	job := obj.(*commonv1.PyTorchJob)
 	ps := []kueue.PodSet{}
 	for role, template := range job.Spec.PyTorchReplicaSpecs {
 		ps = append(ps, kueue.PodSet{
@@ -87,7 +87,7 @@ func (j *PytorchJob) ReservationStatus(ctx context.Context, obj client.Object, q
 }
 
 func (j *PytorchJob) Reservation(ctx context.Context, obj client.Object) ([]koordinatorschedulerv1alpha1.Reservation, error) {
-	job := obj.(*pytorchv1.PyTorchJob)
+	job := obj.(*commonv1.PyTorchJob)
 	resvs := []koordinatorschedulerv1alpha1.Reservation{}
 	netNs, netName := j.GetNetworkTopologyNamespaceName(ctx, obj)
 	for role, template := range job.Spec.PyTorchReplicaSpecs {
@@ -101,7 +101,7 @@ func (j *PytorchJob) Reservation(ctx context.Context, obj client.Object) ([]koor
 
 		labelSelector := &metav1.LabelSelector{}
 		switch role {
-		case pytorchv1.PyTorchReplicaTypeMaster:
+		case commonv1.PyTorchJobReplicaTypeMaster:
 			labelSelector.MatchExpressions = []metav1.LabelSelectorRequirement{
 				{
 					Key:      "pytorch-replica-type",
@@ -119,7 +119,7 @@ func (j *PytorchJob) Reservation(ctx context.Context, obj client.Object) ([]koor
 			// 	"job-name":             strings.ReplaceAll(job.Name, "/", "-"),
 			// 	"pytorch-replica-type": "master",
 			// }
-		case pytorchv1.PyTorchReplicaTypeWorker:
+		case commonv1.PyTorchJobReplicaTypeWorker:
 			labelSelector.MatchExpressions = []metav1.LabelSelectorRequirement{
 				{
 					Key:      "pytorch-replica-type",
@@ -172,11 +172,11 @@ func (j *PytorchJob) Reservation(ctx context.Context, obj client.Object) ([]koor
 }
 
 func (j *PytorchJob) GetNetworkTopologyNamespaceName(ctx context.Context, o client.Object) (string, string) {
-	job, ok := o.(*pytorchv1.PyTorchJob)
+	job, ok := o.(*commonv1.PyTorchJob)
 	if !ok {
 		return "", ""
 	}
-	masterTemplate := job.Spec.PyTorchReplicaSpecs[pytorchv1.PyTorchReplicaTypeMaster]
+	masterTemplate := job.Spec.PyTorchReplicaSpecs[commonv1.PyTorchJobReplicaTypeMaster]
 	if masterTemplate == nil {
 		// TODO
 		return "", ""
@@ -202,7 +202,7 @@ func (j *PytorchJob) GetJobNetworkTopologyCR(ctx context.Context, o client.Objec
 }
 
 func (j *PytorchJob) Resources(ctx context.Context, obj client.Object) v1.ResourceList {
-	job := obj.(*pytorchv1.PyTorchJob)
+	job := obj.(*commonv1.PyTorchJob)
 	totalResources := v1.ResourceList{}
 	// calculate the total resource request
 	for _, replicaSpec := range job.Spec.PyTorchReplicaSpecs {
@@ -217,11 +217,11 @@ func (j *PytorchJob) Resources(ctx context.Context, obj client.Object) v1.Resour
 }
 
 func (j *PytorchJob) Priority(ctx context.Context, obj client.Object) (string, *int32) {
-	job := obj.(*pytorchv1.PyTorchJob)
+	job := obj.(*commonv1.PyTorchJob)
 	var priorityClassName string
 	var priority *int32
 	for role := range job.Spec.PyTorchReplicaSpecs {
-		if role == pytorchv1.PyTorchReplicaTypeMaster {
+		if role == commonv1.PyTorchJobReplicaTypeMaster {
 			klog.Infof("skip search priority in role %v for job %v", role, job.Name)
 			continue
 		}
@@ -250,9 +250,9 @@ func (j *PytorchJob) Priority(ctx context.Context, obj client.Object) (string, *
 }
 
 func (j *PytorchJob) Enqueue(ctx context.Context, obj client.Object, cli client.Client) error {
-	job := obj.(*pytorchv1.PyTorchJob)
+	job := obj.(*commonv1.PyTorchJob)
 	for roleName, roleSpec := range job.Spec.PyTorchReplicaSpecs {
-		if roleName == pytorchv1.PyTorchReplicaTypeMaster {
+		if roleName == commonv1.PyTorchJobReplicaTypeMaster {
 			continue
 		}
 		util.SetPodTemplateSpec(&roleSpec.Template, job.Namespace, job.Name, strings.ToLower(string(roleName)), j.QueueUnitSuffix())
@@ -261,8 +261,8 @@ func (j *PytorchJob) Enqueue(ctx context.Context, obj client.Object, cli client.
 		return err
 	}
 
-	old := &pytorchv1.PyTorchJob{TypeMeta: job.TypeMeta, ObjectMeta: job.ObjectMeta, Status: job.Status}
-	new := &pytorchv1.PyTorchJob{TypeMeta: job.TypeMeta, ObjectMeta: job.ObjectMeta, Status: commonv1.JobStatus{Conditions: util.SliceCopy(job.Status.Conditions)}}
+	old := &commonv1.PyTorchJob{TypeMeta: job.TypeMeta, ObjectMeta: job.ObjectMeta, Status: job.Status}
+	new := &commonv1.PyTorchJob{TypeMeta: job.TypeMeta, ObjectMeta: job.ObjectMeta, Status: commonv1.JobStatus{Conditions: util.SliceCopy(job.Status.Conditions)}}
 	if !setCondition(&new.Status, "Queuing", v1.ConditionTrue, "Job Enqueued") {
 		return nil
 	}
@@ -277,18 +277,19 @@ func (j *PytorchJob) QueueUnitSuffix() string {
 }
 
 func (j *PytorchJob) Suspend(ctx context.Context, obj client.Object, cli client.Client) error {
-	job := obj.(*pytorchv1.PyTorchJob)
-	if job.Annotations[QueueAnnotation] == "true" {
+	job := obj.(*commonv1.PyTorchJob)
+	if isJobSuspended(job) {
 		return nil
 	}
 
-	old := &pytorchv1.PyTorchJob{TypeMeta: job.TypeMeta, ObjectMeta: job.ObjectMeta}
-	new := &pytorchv1.PyTorchJob{TypeMeta: job.TypeMeta, ObjectMeta: job.ObjectMeta}
+	old := &commonv1.PyTorchJob{TypeMeta: job.TypeMeta, ObjectMeta: job.ObjectMeta}
+	new := &commonv1.PyTorchJob{TypeMeta: job.TypeMeta, ObjectMeta: job.ObjectMeta}
 	new.Annotations = util.MapCopy(job.Annotations)
 	if len(new.Annotations) == 0 {
 		new.Annotations = map[string]string{}
 	}
 	new.Annotations[QueueAnnotation] = "true"
+	new.Spec.RunPolicy.Suspend = ptr.To(true)
 	err := cli.Patch(ctx, new, client.MergeFrom(old))
 	if err != nil {
 		return err
@@ -304,7 +305,7 @@ func (j *PytorchJob) Suspend(ctx context.Context, obj client.Object, cli client.
 	}
 }
 
-func (r *PytorchJob) deleteJobResources(pytorchjob *pytorchv1.PyTorchJob) error {
+func (r *PytorchJob) deleteJobResources(pytorchjob *commonv1.PyTorchJob) error {
 	pods, err := r.GetPodsForJob(pytorchjob)
 	filteredPods := []*v1.Pod{}
 	for _, p := range pods {
@@ -367,7 +368,7 @@ func (r *PytorchJob) GetPodsForJob(obj interface{}) ([]*v1.Pod, error) {
 	}
 
 	canAdoptFunc := RecheckDeletionTimestamp(func() (metav1.Object, error) {
-		fresh := &pytorchv1.PyTorchJob{}
+		fresh := &commonv1.PyTorchJob{}
 		err := r.c.Get(context.Background(), types.NamespacedName{
 			Namespace: job.GetNamespace(),
 			Name:      job.GetName(),
@@ -380,7 +381,7 @@ func (r *PytorchJob) GetPodsForJob(obj interface{}) ([]*v1.Pod, error) {
 		}
 		return fresh, nil
 	})
-	cm := control.NewPodControllerRefManager(r.podControl, job, labelSelector, pytorchv1.SchemeGroupVersionKind, canAdoptFunc)
+	cm := control.NewPodControllerRefManager(r.podControl, job, labelSelector, commonv1.SchemeGroupVersion.WithKind(commonv1.PyTorchJobKind), canAdoptFunc)
 	return cm.ClaimPods(podList)
 }
 
@@ -406,7 +407,7 @@ func (r *PytorchJob) GetServicesForJob(obj interface{}) ([]*v1.Service, error) {
 	// If any adoptions are attempted, we should first recheck for deletion
 	// with an uncached quorum read sometime after listing services (see #42639).
 	canAdoptFunc := RecheckDeletionTimestamp(func() (metav1.Object, error) {
-		fresh := &pytorchv1.PyTorchJob{}
+		fresh := &commonv1.PyTorchJob{}
 		err := r.c.Get(context.Background(), types.NamespacedName{
 			Namespace: job.GetNamespace(),
 			Name:      job.GetName(),
@@ -419,12 +420,12 @@ func (r *PytorchJob) GetServicesForJob(obj interface{}) ([]*v1.Service, error) {
 		}
 		return fresh, nil
 	})
-	cm := control.NewServiceControllerRefManager(r.svcControl, job, labelSelector, pytorchv1.SchemeGroupVersionKind, canAdoptFunc)
+	cm := control.NewServiceControllerRefManager(r.svcControl, job, labelSelector, commonv1.SchemeGroupVersion.WithKind(commonv1.PyTorchJobKind), canAdoptFunc)
 	return cm.ClaimServices(servicesList)
 }
 
 // deletePodsAndServices deletes all the pods and master service.
-func (pc *PytorchJob) deletePodsAndServices(job *pytorchv1.PyTorchJob, pods []*v1.Pod, services []*v1.Service) error {
+func (pc *PytorchJob) deletePodsAndServices(job *commonv1.PyTorchJob, pods []*v1.Pod, services []*v1.Service) error {
 	if len(pods) == 0 {
 		return nil
 	}
@@ -435,7 +436,7 @@ func (pc *PytorchJob) deletePodsAndServices(job *pytorchv1.PyTorchJob, pods []*v
 		}
 	}
 
-	rt := strings.ToLower(string(pytorchv1.PyTorchReplicaTypeMaster))
+	rt := strings.ToLower(string(commonv1.PyTorchJobReplicaTypeMaster))
 	services, err := pc.FilterServicesForReplicaType(services, rt)
 	if err != nil {
 		return err
@@ -485,10 +486,10 @@ func (pc *PytorchJob) FilterServicesForReplicaType(services []*v1.Service, repli
 }
 
 func (j *PytorchJob) Resume(ctx context.Context, obj client.Object, cli client.Client) error {
-	job := obj.(*pytorchv1.PyTorchJob)
+	job := obj.(*commonv1.PyTorchJob)
 
-	old := &pytorchv1.PyTorchJob{TypeMeta: job.TypeMeta, ObjectMeta: job.ObjectMeta, Status: job.Status}
-	new := &pytorchv1.PyTorchJob{TypeMeta: job.TypeMeta, ObjectMeta: job.ObjectMeta, Status: commonv1.JobStatus{Conditions: util.SliceCopy(job.Status.Conditions)}}
+	old := &commonv1.PyTorchJob{TypeMeta: job.TypeMeta, ObjectMeta: job.ObjectMeta, Status: job.Status}
+	new := &commonv1.PyTorchJob{TypeMeta: job.TypeMeta, ObjectMeta: job.ObjectMeta, Status: commonv1.JobStatus{Conditions: util.SliceCopy(job.Status.Conditions)}}
 	if setCondition(&new.Status, "Queuing", v1.ConditionFalse, "Job Dequeued") {
 		patch := client.MergeFrom(old)
 		err := cli.SubResource("status").Patch(ctx, new, patch)
@@ -497,7 +498,7 @@ func (j *PytorchJob) Resume(ctx context.Context, obj client.Object, cli client.C
 		}
 	}
 
-	if job.Annotations[QueueAnnotation] != "true" {
+	if !isJobSuspended(job) {
 		return nil
 	}
 	new.Annotations = util.MapCopy(job.Annotations)
@@ -510,15 +511,16 @@ func (j *PytorchJob) Resume(ctx context.Context, obj client.Object, cli client.C
 		new.Annotations[QueueAnnotation] = "false"
 	}
 	new.Annotations["koord-queue/job-dequeue-timestamp"] = time.Now().String()
+	new.Spec.RunPolicy.Suspend = ptr.To(false)
 	return cli.Patch(ctx, new, client.MergeFrom(old))
 }
 
 func (j *PytorchJob) GetJobStatus(ctx context.Context, obj client.Object, client client.Client) (framework.JobStatus, time.Time) {
-	job := obj.(*pytorchv1.PyTorchJob)
+	job := obj.(*commonv1.PyTorchJob)
 	var running, queuing = false, false
 	var runningTransTime, queuingTransTime time.Time
 	for _, cond := range job.Status.Conditions {
-		if cond.Type == commonv1.JobSucceeded && cond.Status == v1.ConditionTrue {
+		if cond.Type == commonv1.JobConditionType(commonv1.JobSucceeded) && cond.Status == v1.ConditionTrue {
 			return framework.Succeeded, cond.LastTransitionTime.Time
 		}
 		if cond.Type == commonv1.JobFailed && cond.Status == v1.ConditionTrue {
@@ -537,7 +539,7 @@ func (j *PytorchJob) GetJobStatus(ctx context.Context, obj client.Object, client
 	if running {
 		return framework.Running, runningTransTime
 	}
-	if value, ok := job.Annotations[QueueAnnotation]; !ok || (ok && value == "false") {
+	if !isJobSuspended(job) {
 		return framework.Pending, queuingTransTime
 	}
 	if queuing {
@@ -547,17 +549,21 @@ func (j *PytorchJob) GetJobStatus(ctx context.Context, obj client.Object, client
 	return framework.Created, job.CreationTimestamp.Time
 }
 
+func isJobSuspended(job *commonv1.PyTorchJob) bool {
+	return job.Annotations[QueueAnnotation] == "true" || job.Spec.RunPolicy.Suspend != nil && *job.Spec.RunPolicy.Suspend
+}
+
 func (j *PytorchJob) ManagedByQueue(ctx context.Context, obj client.Object) bool {
 	if j.managedAllJobs {
 		return true
 	}
-	job := obj.(*pytorchv1.PyTorchJob)
+	job := obj.(*commonv1.PyTorchJob)
 	for _, condition := range job.Status.Conditions {
 		if condition.Type == "Queuing" {
 			return true
 		}
 	}
-	return job.Status.StartTime == nil && job.Annotations[QueueAnnotation] == "true"
+	return job.Status.StartTime == nil && isJobSuspended(job)
 }
 
 func NewPytorchJobReconciler(cli client.Client, config *rest.Config, scheme *runtime.Scheme, managedAllJobs bool, args string) framework.JobHandle {
@@ -567,7 +573,7 @@ func NewPytorchJobReconciler(cli client.Client, config *rest.Config, scheme *run
 		podControl:     control.RealPodControl{KubeClient: c, Recorder: record.NewBroadcaster().NewRecorder(scheme, v1.EventSource{Component: "pytorch-opeartor-extension"})},
 		svcControl:     control.RealServiceControl{KubeClient: c, Recorder: record.NewBroadcaster().NewRecorder(scheme, v1.EventSource{Component: "pytorch-opeartor-extension"})},
 	}
-	_ = pytorchv1.AddToScheme(scheme)
+	_ = commonv1.AddToScheme(scheme)
 	extension := framework.NewGenericJobExtensionWithJob(j, j.ManagedByQueue)
 
 	op := tfOption{}
