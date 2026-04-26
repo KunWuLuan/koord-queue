@@ -14,16 +14,16 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/scheduler-plugins/apis/scheduling/v1alpha1"
 
 	koordinatorschedulerv1alpha1 "github.com/koordinator-sh/apis/scheduling/v1alpha1"
 	kv1alpha1 "github.com/koordinator-sh/koord-queue/pkg/apis/scheduling/v1alpha1"
-	commonv1 "github.com/koordinator-sh/koord-queue/pkg/jobext/apis/common/job_controller/v1"
 	networkv1alpha1 "github.com/koordinator-sh/koord-queue/pkg/jobext/apis/networkaware/apis/scheduling/v1alpha1"
-	tfjobv1 "github.com/koordinator-sh/koord-queue/pkg/jobext/apis/tensorflow/v1"
 	"github.com/koordinator-sh/koord-queue/pkg/jobext/framework"
 	"github.com/koordinator-sh/koord-queue/pkg/jobext/util"
 	"github.com/kubeflow/common/pkg/controller.v1/control"
+	commonv1 "github.com/kubeflow/training-operator/pkg/apis/kubeflow.org/v1"
 	v1 "k8s.io/api/core/v1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -50,19 +50,19 @@ type TfJob struct {
 }
 
 func (j *TfJob) Object() client.Object {
-	return &tfjobv1.TFJob{}
+	return &commonv1.TFJob{}
 }
 func (j *TfJob) DeepCopy(o client.Object) client.Object {
-	job, _ := o.(*tfjobv1.TFJob)
+	job, _ := o.(*commonv1.TFJob)
 	return job.DeepCopy()
 }
 
 func (j *TfJob) GVK() schema.GroupVersionKind {
-	return tfjobv1.SchemeGroupVersion.WithKind(tfjobv1.Kind)
+	return commonv1.SchemeGroupVersion.WithKind(commonv1.TFJobKind)
 }
 
 func (j *TfJob) Resources(ctx context.Context, obj client.Object) v1.ResourceList {
-	job := obj.(*tfjobv1.TFJob)
+	job := obj.(*commonv1.TFJob)
 	totalResources := v1.ResourceList{}
 	// calculate the total resource request
 	for _, replicaSpec := range job.Spec.TFReplicaSpecs {
@@ -106,7 +106,7 @@ func (j *TfJob) GetPodSetName(ownerName string, p *v1.Pod) string {
 }
 
 func (j *TfJob) PodSet(ctx context.Context, obj client.Object) []kueue.PodSet {
-	job := obj.(*tfjobv1.TFJob)
+	job := obj.(*commonv1.TFJob)
 	ps := []kueue.PodSet{}
 	for role, template := range job.Spec.TFReplicaSpecs {
 		ps = append(ps, kueue.PodSet{
@@ -119,11 +119,11 @@ func (j *TfJob) PodSet(ctx context.Context, obj client.Object) []kueue.PodSet {
 }
 
 func (j *TfJob) Priority(ctx context.Context, obj client.Object) (string, *int32) {
-	job := obj.(*tfjobv1.TFJob)
+	job := obj.(*commonv1.TFJob)
 	var priorityClassName string
 	var priority *int32
 	for role := range job.Spec.TFReplicaSpecs {
-		if role == tfjobv1.TFReplicaTypeMaster {
+		if role == commonv1.TFJobReplicaTypeMaster {
 			klog.Infof("skip search priority in role %v for job %v", role, job.Name)
 			continue
 		}
@@ -152,9 +152,9 @@ func (j *TfJob) Priority(ctx context.Context, obj client.Object) (string, *int32
 }
 
 func (j *TfJob) Enqueue(ctx context.Context, obj client.Object, cli client.Client) error {
-	job := obj.(*tfjobv1.TFJob)
+	job := obj.(*commonv1.TFJob)
 	for roleName, roleSpec := range job.Spec.TFReplicaSpecs {
-		if roleName == tfjobv1.TFReplicaTypeMaster {
+		if roleName == commonv1.TFJobReplicaTypeMaster {
 			continue
 		}
 		util.SetPodTemplateSpec(&roleSpec.Template, job.Namespace, job.Name, strings.ToLower(string(roleName)), j.QueueUnitSuffix())
@@ -163,8 +163,8 @@ func (j *TfJob) Enqueue(ctx context.Context, obj client.Object, cli client.Clien
 		return err
 	}
 
-	old := &tfjobv1.TFJob{TypeMeta: job.TypeMeta, ObjectMeta: job.ObjectMeta, Status: job.Status}
-	new := &tfjobv1.TFJob{TypeMeta: job.TypeMeta, ObjectMeta: job.ObjectMeta, Status: commonv1.JobStatus{Conditions: util.SliceCopy(job.Status.Conditions)}}
+	old := &commonv1.TFJob{TypeMeta: job.TypeMeta, ObjectMeta: job.ObjectMeta, Status: job.Status}
+	new := &commonv1.TFJob{TypeMeta: job.TypeMeta, ObjectMeta: job.ObjectMeta, Status: commonv1.JobStatus{Conditions: util.SliceCopy(job.Status.Conditions)}}
 	if !setCondition(&new.Status, "Queuing", v1.ConditionTrue, "Job Enqueued") {
 		return nil
 	}
@@ -172,18 +172,19 @@ func (j *TfJob) Enqueue(ctx context.Context, obj client.Object, cli client.Clien
 }
 
 func (j *TfJob) Suspend(ctx context.Context, obj client.Object, cli client.Client) error {
-	job := obj.(*tfjobv1.TFJob)
-	if job.Annotations[QueueAnnotation] == "true" {
+	job := obj.(*commonv1.TFJob)
+	if isTFJobSuspended(job) {
 		return nil
 	}
 
-	old := &tfjobv1.TFJob{TypeMeta: job.TypeMeta, ObjectMeta: job.ObjectMeta}
-	new := &tfjobv1.TFJob{TypeMeta: job.TypeMeta, ObjectMeta: job.ObjectMeta}
+	old := &commonv1.TFJob{TypeMeta: job.TypeMeta, ObjectMeta: job.ObjectMeta}
+	new := &commonv1.TFJob{TypeMeta: job.TypeMeta, ObjectMeta: job.ObjectMeta}
 	new.Annotations = util.MapCopy(job.Annotations)
 	if len(new.Annotations) == 0 {
 		new.Annotations = map[string]string{}
 	}
 	new.Annotations[QueueAnnotation] = "true"
+	new.Spec.RunPolicy.Suspend = ptr.To(true)
 	err := cli.Patch(ctx, new, client.MergeFrom(old))
 	if err != nil {
 		return err
@@ -194,7 +195,7 @@ func (j *TfJob) Suspend(ctx context.Context, obj client.Object, cli client.Clien
 	return j.deleteJobResources(job)
 }
 
-func (tc *TfJob) deleteJobResources(tfjob *tfjobv1.TFJob) error {
+func (tc *TfJob) deleteJobResources(tfjob *commonv1.TFJob) error {
 	pods, err := tc.GetPodsForJob(tfjob)
 	filteredPods := []*v1.Pod{}
 	for _, p := range pods {
@@ -254,7 +255,7 @@ func (r *TfJob) GetPodsForJob(obj interface{}) ([]*v1.Pod, error) {
 	}
 
 	canAdoptFunc := RecheckDeletionTimestamp(func() (metav1.Object, error) {
-		fresh := &tfjobv1.TFJob{}
+		fresh := &commonv1.TFJob{}
 		err := r.c.Get(context.Background(), types.NamespacedName{
 			Namespace: job.GetNamespace(),
 			Name:      job.GetName(),
@@ -267,7 +268,7 @@ func (r *TfJob) GetPodsForJob(obj interface{}) ([]*v1.Pod, error) {
 		}
 		return fresh, nil
 	})
-	cm := control.NewPodControllerRefManager(r.podControl, job, labelSelector, tfjobv1.SchemeGroupVersionKind, canAdoptFunc)
+	cm := control.NewPodControllerRefManager(r.podControl, job, labelSelector, commonv1.SchemeGroupVersion.WithKind(commonv1.TFJobKind), canAdoptFunc)
 	return cm.ClaimPods(podList)
 }
 
@@ -293,7 +294,7 @@ func (r *TfJob) GetServicesForJob(obj interface{}) ([]*v1.Service, error) {
 	// If any adoptions are attempted, we should first recheck for deletion
 	// with an uncached quorum read sometime after listing services (see #42639).
 	canAdoptFunc := RecheckDeletionTimestamp(func() (metav1.Object, error) {
-		fresh := &tfjobv1.TFJob{}
+		fresh := &commonv1.TFJob{}
 		err := r.c.Get(context.Background(), types.NamespacedName{
 			Namespace: job.GetNamespace(),
 			Name:      job.GetName(),
@@ -306,12 +307,12 @@ func (r *TfJob) GetServicesForJob(obj interface{}) ([]*v1.Service, error) {
 		}
 		return fresh, nil
 	})
-	cm := control.NewServiceControllerRefManager(r.svcControl, job, labelSelector, tfjobv1.SchemeGroupVersion.WithKind("TFJob"), canAdoptFunc)
+	cm := control.NewServiceControllerRefManager(r.svcControl, job, labelSelector, commonv1.SchemeGroupVersion.WithKind("TFJob"), canAdoptFunc)
 	return cm.ClaimServices(servicesList)
 }
 
 // deletePodsAndServices deletes all the pods and master service.
-func (pc *TfJob) deletePodsAndServices(job *tfjobv1.TFJob, pods []*v1.Pod, services []*v1.Service) error {
+func (pc *TfJob) deletePodsAndServices(job *commonv1.TFJob, pods []*v1.Pod, services []*v1.Service) error {
 	if len(pods) == 0 {
 		return nil
 	}
@@ -322,7 +323,7 @@ func (pc *TfJob) deletePodsAndServices(job *tfjobv1.TFJob, pods []*v1.Pod, servi
 		}
 	}
 
-	rt := strings.ToLower(string(tfjobv1.TFReplicaTypeMaster))
+	rt := strings.ToLower(string(commonv1.TFJobReplicaTypeMaster))
 	services, err := pc.FilterServicesForReplicaType(services, rt)
 	if err != nil {
 		return err
@@ -372,10 +373,10 @@ func (pc *TfJob) FilterServicesForReplicaType(services []*v1.Service, replicaTyp
 }
 
 func (j *TfJob) Resume(ctx context.Context, obj client.Object, cli client.Client) error {
-	job := obj.(*tfjobv1.TFJob)
+	job := obj.(*commonv1.TFJob)
 
-	old := &tfjobv1.TFJob{TypeMeta: job.TypeMeta, ObjectMeta: job.ObjectMeta, Status: job.Status}
-	new := &tfjobv1.TFJob{TypeMeta: job.TypeMeta, ObjectMeta: job.ObjectMeta, Status: commonv1.JobStatus{Conditions: util.SliceCopy(job.Status.Conditions)}}
+	old := &commonv1.TFJob{TypeMeta: job.TypeMeta, ObjectMeta: job.ObjectMeta, Status: job.Status}
+	new := &commonv1.TFJob{TypeMeta: job.TypeMeta, ObjectMeta: job.ObjectMeta, Status: commonv1.JobStatus{Conditions: util.SliceCopy(job.Status.Conditions)}}
 	if setCondition(&new.Status, "Queuing", v1.ConditionFalse, "Job Dequeued") {
 		patch := client.MergeFrom(old)
 		err := cli.SubResource("status").Patch(ctx, new, patch)
@@ -384,7 +385,7 @@ func (j *TfJob) Resume(ctx context.Context, obj client.Object, cli client.Client
 		}
 	}
 
-	if job.Annotations[QueueAnnotation] != "true" {
+	if !isTFJobSuspended(job) {
 		return nil
 	}
 	new.Annotations = util.MapCopy(job.Annotations)
@@ -396,13 +397,14 @@ func (j *TfJob) Resume(ctx context.Context, obj client.Object, cli client.Client
 	} else {
 		new.Annotations[QueueAnnotation] = "false"
 	}
+	new.Spec.RunPolicy.Suspend = ptr.To(false)
 	new.Annotations["koord-queue/job-dequeue-timestamp"] = time.Now().String()
 	patch := client.MergeFrom(old)
 	return cli.Patch(ctx, new, patch)
 }
 
 func (j *TfJob) GetJobStatus(ctx context.Context, obj client.Object, client client.Client) (framework.JobStatus, time.Time) {
-	job := obj.(*tfjobv1.TFJob)
+	job := obj.(*commonv1.TFJob)
 	var running, queuing = false, false
 	var runningTransTime, queuingTransTime time.Time
 	for _, cond := range job.Status.Conditions {
@@ -425,7 +427,7 @@ func (j *TfJob) GetJobStatus(ctx context.Context, obj client.Object, client clie
 	if running {
 		return framework.Running, runningTransTime
 	}
-	if value, ok := job.Annotations[QueueAnnotation]; !ok || (ok && value == "false") {
+	if !isTFJobSuspended(job) {
 		return framework.Pending, queuingTransTime
 	}
 	if queuing {
@@ -439,13 +441,13 @@ func (j *TfJob) ManagedByQueue(ctx context.Context, obj client.Object) bool {
 	if j.managedAllJobs {
 		return true
 	}
-	job := obj.(*tfjobv1.TFJob)
+	job := obj.(*commonv1.TFJob)
 	for _, condition := range job.Status.Conditions {
 		if condition.Type == "Queuing" {
 			return true
 		}
 	}
-	return job.Status.StartTime == nil && job.Annotations[QueueAnnotation] == "true"
+	return job.Status.StartTime == nil && isTFJobSuspended(job)
 }
 
 type tfOption struct {
@@ -460,7 +462,7 @@ func NewTfJobReconciler(cli client.Client, config *rest.Config, scheme *runtime.
 		podControl:     control.RealPodControl{KubeClient: c, Recorder: record.NewBroadcaster().NewRecorder(scheme, v1.EventSource{Component: "tf-opeartor-extension"})},
 		svcControl:     control.RealServiceControl{KubeClient: c, Recorder: record.NewBroadcaster().NewRecorder(scheme, v1.EventSource{Component: "tf-opeartor-extension"})},
 	}
-	_ = tfjobv1.AddToScheme(scheme)
+	_ = commonv1.AddToScheme(scheme)
 	extension := framework.NewGenericJobExtensionWithJob(j, j.ManagedByQueue)
 
 	op := tfOption{}
@@ -488,7 +490,7 @@ func (j *TfJob) ReservationStatus(ctx context.Context, obj client.Object, qu *kv
 }
 
 func (j *TfJob) Reservation(ctx context.Context, obj client.Object) ([]koordinatorschedulerv1alpha1.Reservation, error) {
-	job := obj.(*tfjobv1.TFJob)
+	job := obj.(*commonv1.TFJob)
 	resvs := []koordinatorschedulerv1alpha1.Reservation{}
 	netNs, netName := j.GetNetworkTopologyNamespaceName(ctx, obj)
 	for role, template := range job.Spec.TFReplicaSpecs {
@@ -553,11 +555,11 @@ func (j *TfJob) Reservation(ctx context.Context, obj client.Object) ([]koordinat
 }
 
 func (j *TfJob) GetNetworkTopologyNamespaceName(ctx context.Context, o client.Object) (string, string) {
-	job, ok := o.(*tfjobv1.TFJob)
+	job, ok := o.(*commonv1.TFJob)
 	if !ok {
 		return "", ""
 	}
-	masterTemplate := job.Spec.TFReplicaSpecs[tfjobv1.TFReplicaTypeMaster]
+	masterTemplate := job.Spec.TFReplicaSpecs[commonv1.TFJobReplicaTypeMaster]
 	if masterTemplate == nil {
 		// TODO
 		return "", ""
@@ -580,4 +582,8 @@ func (j *TfJob) GetJobNetworkTopologyCR(ctx context.Context, o client.Object, cl
 		return nil, err
 	}
 	return jnt, nil
+}
+
+func isTFJobSuspended(job *commonv1.TFJob) bool {
+	return job.Annotations[QueueAnnotation] == "true" || job.Spec.RunPolicy.Suspend != nil && *job.Spec.RunPolicy.Suspend
 }
