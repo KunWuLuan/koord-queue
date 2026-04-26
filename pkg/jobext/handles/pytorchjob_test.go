@@ -22,9 +22,8 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	commonv1 "github.com/koordinator-sh/koord-queue/pkg/jobext/apis/common/job_controller/v1"
-	pytorchv1 "github.com/koordinator-sh/koord-queue/pkg/jobext/apis/pytorch/v1"
 	"github.com/koordinator-sh/koord-queue/pkg/jobext/framework"
+	commonv1 "github.com/kubeflow/training-operator/pkg/apis/kubeflow.org/v1"
 	v1 "k8s.io/api/core/v1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -49,9 +48,9 @@ var _ = Describe("PytorchJob Controller", func() {
 		ctx = context.Background()
 		scheme = runtime.NewScheme()
 		schedulingv1.AddToScheme(scheme)
-		pytorchv1.AddToScheme(scheme)
+		commonv1.AddToScheme(scheme)
 		v1.AddToScheme(scheme)
-		fakeClient = fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(&pytorchv1.PyTorchJob{}).Build()
+		fakeClient = fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(&commonv1.PyTorchJob{}).Build()
 		pytorchJobController = &PytorchJob{
 			c:              fakeClient,
 			managedAllJobs: false,
@@ -61,16 +60,16 @@ var _ = Describe("PytorchJob Controller", func() {
 	Context("Object", func() {
 		It("should return a PyTorchJob object", func() {
 			obj := pytorchJobController.Object()
-			Expect(obj).To(BeAssignableToTypeOf(&pytorchv1.PyTorchJob{}))
+			Expect(obj).To(BeAssignableToTypeOf(&commonv1.PyTorchJob{}))
 		})
 	})
 
 	Context("GVK", func() {
 		It("should return correct GroupVersionKind", func() {
 			gvk := pytorchJobController.GVK()
-			Expect(gvk.Kind).To(Equal(pytorchv1.Kind))
-			Expect(gvk.Version).To(Equal(pytorchv1.SchemeGroupVersion.Version))
-			Expect(gvk.Group).To(Equal(pytorchv1.GroupName))
+			Expect(gvk.Kind).To(Equal(commonv1.PyTorchJobKind))
+			Expect(gvk.Version).To(Equal(commonv1.SchemeGroupVersion.Version))
+			Expect(gvk.Group).To(Equal(commonv1.GroupVersion.Group))
 		})
 	})
 
@@ -99,10 +98,10 @@ var _ = Describe("PytorchJob Controller", func() {
 
 	Context("PodSet", func() {
 		It("should generate correct pod sets", func() {
-			job := &pytorchv1.PyTorchJob{
-				Spec: pytorchv1.PyTorchJobSpec{
-					PyTorchReplicaSpecs: map[pytorchv1.PyTorchReplicaType]*commonv1.ReplicaSpec{
-						pytorchv1.PyTorchReplicaTypeWorker: {
+			job := &commonv1.PyTorchJob{
+				Spec: commonv1.PyTorchJobSpec{
+					PyTorchReplicaSpecs: map[commonv1.ReplicaType]*commonv1.ReplicaSpec{
+						commonv1.PyTorchJobReplicaTypeMaster: {
 							Replicas: ptr.To[int32](2),
 							Template: v1.PodTemplateSpec{
 								Spec: v1.PodSpec{
@@ -115,7 +114,7 @@ var _ = Describe("PytorchJob Controller", func() {
 								},
 							},
 						},
-						pytorchv1.PyTorchReplicaTypeMaster: {
+						commonv1.PyTorchJobReplicaTypeWorker: {
 							Replicas: ptr.To[int32](1),
 							Template: v1.PodTemplateSpec{
 								Spec: v1.PodSpec{
@@ -161,10 +160,10 @@ var _ = Describe("PytorchJob Controller", func() {
 
 	Context("Resources", func() {
 		It("should calculate resources correctly", func() {
-			job := &pytorchv1.PyTorchJob{
-				Spec: pytorchv1.PyTorchJobSpec{
-					PyTorchReplicaSpecs: map[pytorchv1.PyTorchReplicaType]*commonv1.ReplicaSpec{
-						pytorchv1.PyTorchReplicaTypeWorker: {
+			job := &commonv1.PyTorchJob{
+				Spec: commonv1.PyTorchJobSpec{
+					PyTorchReplicaSpecs: map[commonv1.ReplicaType]*commonv1.ReplicaSpec{
+						commonv1.PyTorchJobReplicaTypeWorker: {
 							Replicas: ptr.To[int32](2),
 							Template: v1.PodTemplateSpec{
 								Spec: v1.PodSpec{
@@ -181,7 +180,7 @@ var _ = Describe("PytorchJob Controller", func() {
 								},
 							},
 						},
-						pytorchv1.PyTorchReplicaTypeMaster: {
+						commonv1.PyTorchJobReplicaTypeMaster: {
 							Replicas: ptr.To[int32](1),
 							Template: v1.PodTemplateSpec{
 								Spec: v1.PodSpec{
@@ -219,10 +218,10 @@ var _ = Describe("PytorchJob Controller", func() {
 	Context("Priority", func() {
 		It("should return correct priority", func() {
 			priority := int32(100)
-			job := &pytorchv1.PyTorchJob{
-				Spec: pytorchv1.PyTorchJobSpec{
-					PyTorchReplicaSpecs: map[pytorchv1.PyTorchReplicaType]*commonv1.ReplicaSpec{
-						pytorchv1.PyTorchReplicaTypeWorker: {
+			job := &commonv1.PyTorchJob{
+				Spec: commonv1.PyTorchJobSpec{
+					PyTorchReplicaSpecs: map[commonv1.ReplicaType]*commonv1.ReplicaSpec{
+						commonv1.PyTorchJobReplicaTypeWorker: {
 							Template: v1.PodTemplateSpec{
 								Spec: v1.PodSpec{
 									PriorityClassName: "test-priority-class",
@@ -256,12 +255,12 @@ var _ = Describe("PytorchJob Controller", func() {
 	Context("ManagedByQueue", func() {
 		It("should return true when managing all jobs", func() {
 			pytorchJobController.managedAllJobs = true
-			job := &pytorchv1.PyTorchJob{}
+			job := &commonv1.PyTorchJob{}
 			Expect(pytorchJobController.ManagedByQueue(ctx, job)).To(BeTrue())
 		})
 
 		It("should return true when job has queuing condition", func() {
-			job := &pytorchv1.PyTorchJob{
+			job := &commonv1.PyTorchJob{
 				Status: commonv1.JobStatus{
 					Conditions: []commonv1.JobCondition{
 						{
@@ -275,7 +274,7 @@ var _ = Describe("PytorchJob Controller", func() {
 		})
 
 		It("should return false when job has no queuing condition and start time", func() {
-			job := &pytorchv1.PyTorchJob{
+			job := &commonv1.PyTorchJob{
 				ObjectMeta: metav1.ObjectMeta{
 					Annotations: map[string]string{
 						QueueAnnotation: "false",
@@ -289,7 +288,7 @@ var _ = Describe("PytorchJob Controller", func() {
 	Context("GetJobStatus", func() {
 		It("should return succeeded status", func() {
 			now := metav1.Now()
-			job := &pytorchv1.PyTorchJob{
+			job := &commonv1.PyTorchJob{
 				Status: commonv1.JobStatus{
 					Conditions: []commonv1.JobCondition{
 						{
@@ -308,7 +307,7 @@ var _ = Describe("PytorchJob Controller", func() {
 
 		It("should return failed status", func() {
 			now := metav1.Now()
-			job := &pytorchv1.PyTorchJob{
+			job := &commonv1.PyTorchJob{
 				Status: commonv1.JobStatus{
 					Conditions: []commonv1.JobCondition{
 						{
@@ -327,7 +326,7 @@ var _ = Describe("PytorchJob Controller", func() {
 
 		It("should return running status", func() {
 			now := metav1.Now()
-			job := &pytorchv1.PyTorchJob{
+			job := &commonv1.PyTorchJob{
 				Status: commonv1.JobStatus{
 					Conditions: []commonv1.JobCondition{
 						{
@@ -346,7 +345,7 @@ var _ = Describe("PytorchJob Controller", func() {
 
 		It("should return queuing status", func() {
 			now := metav1.Now()
-			job := &pytorchv1.PyTorchJob{
+			job := &commonv1.PyTorchJob{
 				ObjectMeta: metav1.ObjectMeta{
 					Annotations: map[string]string{
 						QueueAnnotation: "true",
@@ -371,14 +370,14 @@ var _ = Describe("PytorchJob Controller", func() {
 
 	Context("Reservation", func() {
 		It("should generate reservations correctly", func() {
-			job := &pytorchv1.PyTorchJob{
+			job := &commonv1.PyTorchJob{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "test-job",
 					Namespace: "default",
 				},
-				Spec: pytorchv1.PyTorchJobSpec{
-					PyTorchReplicaSpecs: map[pytorchv1.PyTorchReplicaType]*commonv1.ReplicaSpec{
-						pytorchv1.PyTorchReplicaTypeWorker: {
+				Spec: commonv1.PyTorchJobSpec{
+					PyTorchReplicaSpecs: map[commonv1.ReplicaType]*commonv1.ReplicaSpec{
+						commonv1.PyTorchJobReplicaTypeWorker: {
 							Replicas: ptr.To[int32](2),
 							Template: v1.PodTemplateSpec{
 								ObjectMeta: metav1.ObjectMeta{
@@ -402,7 +401,7 @@ var _ = Describe("PytorchJob Controller", func() {
 								},
 							},
 						},
-						pytorchv1.PyTorchReplicaTypeMaster: {
+						commonv1.PyTorchJobReplicaTypeMaster: {
 							Replicas: ptr.To[int32](1),
 							Template: v1.PodTemplateSpec{
 								ObjectMeta: metav1.ObjectMeta{
@@ -479,13 +478,13 @@ var _ = Describe("PytorchJob Controller", func() {
 		})
 
 		It("should handle AIMaster role correctly", func() {
-			job := &pytorchv1.PyTorchJob{
+			job := &commonv1.PyTorchJob{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "test-job",
 					Namespace: "default",
 				},
-				Spec: pytorchv1.PyTorchJobSpec{
-					PyTorchReplicaSpecs: map[pytorchv1.PyTorchReplicaType]*commonv1.ReplicaSpec{
+				Spec: commonv1.PyTorchJobSpec{
+					PyTorchReplicaSpecs: map[commonv1.ReplicaType]*commonv1.ReplicaSpec{
 						"AIMaster": {
 							Replicas: ptr.To[int32](1),
 							Template: v1.PodTemplateSpec{
@@ -518,9 +517,9 @@ var _ = Describe("PytorchJob Controller", func() {
 		})
 
 		It("should return empty strings when master template is nil", func() {
-			job := &pytorchv1.PyTorchJob{
-				Spec: pytorchv1.PyTorchJobSpec{
-					PyTorchReplicaSpecs: map[pytorchv1.PyTorchReplicaType]*commonv1.ReplicaSpec{},
+			job := &commonv1.PyTorchJob{
+				Spec: commonv1.PyTorchJobSpec{
+					PyTorchReplicaSpecs: map[commonv1.ReplicaType]*commonv1.ReplicaSpec{},
 				},
 			}
 			ns, name := pytorchJobController.GetNetworkTopologyNamespaceName(ctx, job)
@@ -529,10 +528,10 @@ var _ = Describe("PytorchJob Controller", func() {
 		})
 
 		It("should return empty strings when network topology name is empty", func() {
-			job := &pytorchv1.PyTorchJob{
-				Spec: pytorchv1.PyTorchJobSpec{
-					PyTorchReplicaSpecs: map[pytorchv1.PyTorchReplicaType]*commonv1.ReplicaSpec{
-						pytorchv1.PyTorchReplicaTypeMaster: {
+			job := &commonv1.PyTorchJob{
+				Spec: commonv1.PyTorchJobSpec{
+					PyTorchReplicaSpecs: map[commonv1.ReplicaType]*commonv1.ReplicaSpec{
+						commonv1.PyTorchJobReplicaTypeMaster: {
 							Template: v1.PodTemplateSpec{
 								ObjectMeta: metav1.ObjectMeta{
 									Labels: map[string]string{
@@ -551,10 +550,10 @@ var _ = Describe("PytorchJob Controller", func() {
 		})
 
 		It("should return correct namespace and name", func() {
-			job := &pytorchv1.PyTorchJob{
-				Spec: pytorchv1.PyTorchJobSpec{
-					PyTorchReplicaSpecs: map[pytorchv1.PyTorchReplicaType]*commonv1.ReplicaSpec{
-						pytorchv1.PyTorchReplicaTypeMaster: {
+			job := &commonv1.PyTorchJob{
+				Spec: commonv1.PyTorchJobSpec{
+					PyTorchReplicaSpecs: map[commonv1.ReplicaType]*commonv1.ReplicaSpec{
+						commonv1.PyTorchJobReplicaTypeMaster: {
 							Template: v1.PodTemplateSpec{
 								ObjectMeta: metav1.ObjectMeta{
 									Labels: map[string]string{
@@ -575,10 +574,10 @@ var _ = Describe("PytorchJob Controller", func() {
 
 	Context("GetJobNetworkTopologyCR", func() {
 		It("should return nil when network topology name is empty", func() {
-			job := &pytorchv1.PyTorchJob{
-				Spec: pytorchv1.PyTorchJobSpec{
-					PyTorchReplicaSpecs: map[pytorchv1.PyTorchReplicaType]*commonv1.ReplicaSpec{
-						pytorchv1.PyTorchReplicaTypeMaster: {
+			job := &commonv1.PyTorchJob{
+				Spec: commonv1.PyTorchJobSpec{
+					PyTorchReplicaSpecs: map[commonv1.ReplicaType]*commonv1.ReplicaSpec{
+						commonv1.PyTorchJobReplicaTypeMaster: {
 							Template: v1.PodTemplateSpec{
 								ObjectMeta: metav1.ObjectMeta{
 									Labels: map[string]string{
@@ -601,7 +600,7 @@ var _ = Describe("PytorchJob Controller", func() {
 
 	Context("Enqueue", func() {
 		It("should enqueue job correctly", func() {
-			job := &pytorchv1.PyTorchJob{
+			job := &commonv1.PyTorchJob{
 				TypeMeta: metav1.TypeMeta{
 					Kind:       "PyTorchJob",
 					APIVersion: "kubeflow.org/v1",
@@ -610,9 +609,9 @@ var _ = Describe("PytorchJob Controller", func() {
 					Name:      "test-job",
 					Namespace: "default",
 				},
-				Spec: pytorchv1.PyTorchJobSpec{
-					PyTorchReplicaSpecs: map[pytorchv1.PyTorchReplicaType]*commonv1.ReplicaSpec{
-						pytorchv1.PyTorchReplicaTypeWorker: {
+				Spec: commonv1.PyTorchJobSpec{
+					PyTorchReplicaSpecs: map[commonv1.ReplicaType]*commonv1.ReplicaSpec{
+						commonv1.PyTorchJobReplicaTypeWorker: {
 							Replicas: ptr.To[int32](1),
 							Template: v1.PodTemplateSpec{
 								Spec: v1.PodSpec{
@@ -635,7 +634,7 @@ var _ = Describe("PytorchJob Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			// Check that the job was updated
-			updatedJob := &pytorchv1.PyTorchJob{}
+			updatedJob := &commonv1.PyTorchJob{}
 			Expect(fakeClient.Get(ctx, types.NamespacedName{Name: "test-job", Namespace: "default"}, updatedJob)).To(Succeed())
 
 			// Check that a Queuing condition was added
@@ -652,7 +651,7 @@ var _ = Describe("PytorchJob Controller", func() {
 
 	Context("Suspend", func() {
 		It("should not suspend already suspended job", func() {
-			job := &pytorchv1.PyTorchJob{
+			job := &commonv1.PyTorchJob{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "test-job",
 					Namespace: "default",
@@ -667,7 +666,7 @@ var _ = Describe("PytorchJob Controller", func() {
 		})
 
 		It("should suspend job correctly", func() {
-			job := &pytorchv1.PyTorchJob{
+			job := &commonv1.PyTorchJob{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "test-job",
 					Namespace: "default",
@@ -680,7 +679,7 @@ var _ = Describe("PytorchJob Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			// Check that the job was updated
-			updatedJob := &pytorchv1.PyTorchJob{}
+			updatedJob := &commonv1.PyTorchJob{}
 			Expect(fakeClient.Get(ctx, types.NamespacedName{Name: "test-job", Namespace: "default"}, updatedJob)).To(Succeed())
 			Expect(updatedJob.Annotations[QueueAnnotation]).To(Equal("true"))
 		})
@@ -730,7 +729,7 @@ var _ = Describe("PytorchJob Controller", func() {
 
 	Context("Resume", func() {
 		It("should not resume already resumed job", func() {
-			job := &pytorchv1.PyTorchJob{
+			job := &commonv1.PyTorchJob{
 				TypeMeta: metav1.TypeMeta{
 					Kind:       "PyTorchJob",
 					APIVersion: "kubeflow.org/v1",
@@ -750,7 +749,7 @@ var _ = Describe("PytorchJob Controller", func() {
 		})
 
 		It("should resume job correctly", func() {
-			job := &pytorchv1.PyTorchJob{
+			job := &commonv1.PyTorchJob{
 				TypeMeta: metav1.TypeMeta{
 					Kind:       "PyTorchJob",
 					APIVersion: "kubeflow.org/v1",
@@ -770,7 +769,7 @@ var _ = Describe("PytorchJob Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			// Check that the job was updated
-			updatedJob := &pytorchv1.PyTorchJob{}
+			updatedJob := &commonv1.PyTorchJob{}
 			Expect(fakeClient.Get(ctx, types.NamespacedName{Name: "test-job", Namespace: "default"}, updatedJob)).To(Succeed())
 			Expect(updatedJob.Annotations[QueueAnnotation]).To(Equal("false"))
 		})
