@@ -1,0 +1,8 @@
+# Exclude the Go workspace files from the Docker build context.
+#
+# `go build` inside the image would otherwise run in workspace mode, which ignores the committed
+# module `vendor/` directory and tries to resolve modules over the network. The build image has no
+# git and cannot reach the private `gitlab.alibaba-inc.com/eml/kubequeue-api` replacement, so the
+# build must run in module mode and use vendor/. Dropping go.work here makes that happen.
+go.work
+go.work.sum
