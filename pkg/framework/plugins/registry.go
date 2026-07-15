@@ -34,6 +34,11 @@ import (
 // A scheduler that runs out of tree plugins can register additional plugins
 // through the WithFrameworkOutOfTreeRegistry option.
 func NewInTreeRegistry() runtime.Registry {
+	// Register every in-tree plugin. Which of them are actually enabled is decided by the
+	// KoordQueueConfiguration's `plugins` list (see NewFramework), following the
+	// KubeSchedulerConfiguration / koord-queue model, rather than the QueueGroupPlugin env var.
+	// The group plugins (ResourceQuota / ElasticQuotaV2) are mutually exclusive, so
+	// the config should enable exactly one of them alongside Priority.
 	return runtime.Registry{
 		priority.Name:             priority.New,
 		defaultgroup.Name:         defaultgroup.New,
