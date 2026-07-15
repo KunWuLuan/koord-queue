@@ -112,11 +112,3 @@ kube-queue 有两条不同层次的抢占路径。具体走哪一条,取决于�
 | 配额满(可抢占)时 | `Filter` Success,准入抢占者,不设 `ReclaimState` | `Filter` Unschedulable |
 | 是否设置 `ReclaimState` | 否(回收由外部完成) | 是,经 `q.Preempt` |
 | 是否需要队列抢占注解 | 仅当你也想走队列级路径时 | 需要 |
-
-## 测试
-
-- `pkg/test/integration/filterpreemption/` —— 树形插件 `Filter` 试算准入(断言抢占者被准入,而牺牲者的
-  `ReclaimState` 保持为 nil)。
-- `pkg/test/integration/elasticquotav1alpha1preemption/` —— ElasticQuotaV2 插件的队列级 `q.Preempt`
-  (断言当更高优先级单元需要配额时,低优先级牺牲者被设置 `ReclaimState`)。
-- `pkg/queue/queuepolicies/schedulingqueuev2/preempt_test.go` —— 牺牲者选择的单元测试。

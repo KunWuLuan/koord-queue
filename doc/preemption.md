@@ -129,12 +129,3 @@ higher-priority QueueUnit created
 | On quota full (preemptible) | `Filter` Success, preemptor admitted, no `ReclaimState` | `Filter` Unschedulable |
 | Sets `ReclaimState` | No (reclaim is external) | Yes, via `q.Preempt` |
 | Needs queue preemption annotations | Only if you want the queue-level path too | Yes |
-
-## Tests
-
-- `pkg/test/integration/filterpreemption/` — tree-plugin `Filter` dry-run admission (asserts the
-  preemptor is admitted and the victim's `ReclaimState` stays nil).
-- `pkg/test/integration/elasticquotav1alpha1preemption/` — queue-level `q.Preempt` for the
-  ElasticQuotaV2 plugin (asserts a lower-priority victim gets `ReclaimState` set when a higher-priority
-  unit needs the quota).
-- `pkg/queue/queuepolicies/schedulingqueuev2/preempt_test.go` — victim-selection unit tests.
