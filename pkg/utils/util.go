@@ -382,6 +382,9 @@ func UpdateQueueUnitStatusAndAnnotations(name string, namespace string, queueNam
 			needUpdateSpec := false
 			newQueueUnit := queueUnit.DeepCopy()
 			if len(annotations) > 0 {
+				if newQueueUnit.Annotations == nil {
+					newQueueUnit.Annotations = make(map[string]string)
+				}
 				for k, v := range annotations {
 					if queueUnit.Annotations[k] != v {
 						needUpdateSpec = true
