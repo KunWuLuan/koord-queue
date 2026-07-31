@@ -18,6 +18,7 @@ package multischedulingqueue
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 	"sort"
 	"strconv"
@@ -29,6 +30,7 @@ import (
 	"gopkg.in/yaml.v2"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
 
 	"github.com/koordinator-sh/koord-queue/pkg/framework"
@@ -53,6 +55,7 @@ type MultiSchedulingQueue struct {
 	podMaxBackoffSeconds     int
 	enableStrictConsistency  bool
 	started                  bool
+	recorder                 record.EventRecorder
 
 	queueChan *sync.Cond
 }
@@ -100,7 +103,7 @@ func (mq *MultiSchedulingQueue) DeleteQueueUnit(qu *v1alpha1.QueueUnit) {
 	delete(mq.queueUnitToQueue, qu.Namespace+"/"+qu.Name)
 }
 
-func NewMultiSchedulingQueue(fw framework.MultiQueueHandle, podInitialBackoffSeconds int, podMaxBackoffSeconds int, queueUnitLister externalv1alpha1.QueueUnitLister, enableStrictConsistency bool) (queue.MultiSchedulingQueue, error) {
+func NewMultiSchedulingQueue(fw framework.MultiQueueHandle, podInitialBackoffSeconds int, podMaxBackoffSeconds int, queueUnitLister externalv1alpha1.QueueUnitLister, enableStrictConsistency bool, recorder record.EventRecorder) (queue.MultiSchedulingQueue, error) {
 	mq := &MultiSchedulingQueue{
 		fw:                       fw,
 		queueMap:                 make(map[string]*queue.Queue),
@@ -112,6 +115,7 @@ func NewMultiSchedulingQueue(fw framework.MultiQueueHandle, podInitialBackoffSec
 		podMaxBackoffSeconds:     podMaxBackoffSeconds,
 		queueUnitLister:          queueUnitLister,
 		enableStrictConsistency:  enableStrictConsistency,
+		recorder:                 recorder,
 		queueChan:                sync.NewCond(&sync.Mutex{}),
 	}
 
@@ -179,7 +183,11 @@ func (mq *MultiSchedulingQueue) flushUnitsFindNoQueue() {
 		}
 		queue, ok := mq.queueMap[qname]
 		if !ok {
-			klog.Infof("queue %v not found for qu %v", qname, qu.Name)
+			if mq.recorder != nil {
+				mq.recorder.Event(qu.Unit, "Warning", "QueueNotFound", fmt.Sprintf("queue %s not found for queueUnit %s", qname, qu.Name))
+			} else {
+				klog.Infof("queue %v not found for qu %v", qname, qu.Name)
+			}
 			newUnitsList = append(newUnitsList, qu)
 		} else {
 			klog.Infof("add qu %v to queue %v", qu.Name, qname)

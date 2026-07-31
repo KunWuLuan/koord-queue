@@ -198,7 +198,7 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 
 	var multiQueue queue.MultiSchedulingQueue
-	multiQueue, err = multischedulingqueue.NewMultiSchedulingQueue(fw, 1, 10, queueUnitLister, false)
+	multiQueue, err = multischedulingqueue.NewMultiSchedulingQueue(fw, 1, 10, queueUnitLister, false, nil)
 	Expect(err).NotTo(HaveOccurred())
 
 	sched, err := scheduler.NewScheduler(multiQueue, fw, cli, recorder, false, false, false, 10, "")

@@ -84,7 +84,7 @@ func TestWatchDequeuedQueueUnitDirectly(t *testing.T) {
 		queueUnitInformerFactory.Scheduling().V1alpha1().Queues().Lister()
 
 		multiSchedulingQueue, _ := multischedulingqueue.NewMultiSchedulingQueue(fw,
-			0, 0, queueUnitLister, false)
+			0, 0, queueUnitLister, false, nil)
 		controller.SetMultiSchedulingQueue(multiSchedulingQueue)
 
 		controller.AddAllEventHandlers(queueUnitInformer, queueInformer)
@@ -171,7 +171,7 @@ func TestGetQueueUnitsByQueue(t *testing.T) {
 	queueInformer := queueUnitInformerFactory.Scheduling().V1alpha1().Queues().Informer()
 
 	multiSchedulingQueue, _ := multischedulingqueue.NewMultiSchedulingQueue(fw,
-		0, 0, queueUnitLister, false)
+			0, 0, queueUnitLister, false, nil)
 	controller.SetMultiSchedulingQueue(multiSchedulingQueue)
 	controller.queueUnitLister = queueUnitLister
 
@@ -315,7 +315,7 @@ func TestGetQueueUnitsByQuota(t *testing.T) {
 	controller := &Controller{}
 	controller.SetFramework(fw)
 	mq, _ := multischedulingqueue.NewMultiSchedulingQueue(fw,
-		1, 10, queueUnitLister, false)
+		1, 10, queueUnitLister, false, nil)
 	controller.multiSchedulingQueue = mq
 	fw.QueueInformerFactory().Start(nil)
 	fw.QueueInformerFactory().WaitForCacheSync(nil)

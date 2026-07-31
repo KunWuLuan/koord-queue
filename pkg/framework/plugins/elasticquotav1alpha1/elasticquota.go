@@ -46,11 +46,6 @@ func (eq *ElasticQuota) GetQueueUnitQuotaName(qu *v1alpha1.QueueUnit) ([]string,
 	return []string{getQuotaName(qu)}, nil
 }
 
-func (eq *ElasticQuota) GetClient() versioned.Interface {
-	// only for test
-	return eq.eqClient
-}
-
 const Name = "ElasticQuotaV2"
 
 // Name returns name of the plugin.
@@ -85,12 +80,14 @@ func New(_ runtime.Object, handle framework.Handle) (framework.Plugin, error) {
 			return nil, fmt.Errorf("failed to wait for caches to sync %v", t.Name())
 		}
 	}
+	// Load existing quotas/queue units only after the informer cache has synced, so the
+	// cluster-scoped lister below can see all ElasticQuotas regardless of namespace.
 	plugin.LoadQuotaAndQueueUnits()
 	return plugin, nil
 }
 
 func (eq *ElasticQuota) initHandler() {
-	_, _ = eq.informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	eq.informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    eq.Add,
 		UpdateFunc: eq.Update,
 		DeleteFunc: eq.Delete,
@@ -104,6 +101,8 @@ func (eq *ElasticQuota) initHandler() {
 // when the queue units reserved to the children, if parent is not loaded yet, the usage will not recursively add to
 // the parent.
 func (eq *ElasticQuota) LoadQuotaAndQueueUnits() {
+	// Use the cluster-scoped lister rather than a namespace-scoped client call so that
+	// ElasticQuotas in any namespace are loaded (they are no longer confined to kube-system).
 	quotas, err := eq.lister.List(labels.Everything())
 	if err != nil {
 		panic(err)
@@ -154,11 +153,7 @@ func (eq *ElasticQuota) Filter(ctx context.Context, queueUnit *framework.QueueUn
 		overSellRate = eq.handle.OversellRate()
 	}
 
-	var err error
-	if queueUnit.Unit.Annotations == nil {
-		queueUnit.Unit.Annotations = make(map[string]string)
-	}
-	err = eq.cache.CheckUsage(quotaName, queueUnit, overSellRate)
+	err := eq.cache.CheckUsage(quotaName, queueUnit, overSellRate)
 	if err != nil {
 		return framework.NewStatus(framework.Unschedulable, err.Error(), nil)
 	}
@@ -166,11 +161,12 @@ func (eq *ElasticQuota) Filter(ctx context.Context, queueUnit *framework.QueueUn
 	return framework.NewStatus(framework.Success, "", ads)
 }
 
-func (eq *ElasticQuota) Reserve(ctx context.Context, queueUnit *framework.QueueUnitInfo, ads map[string]framework.Admission) *framework.Status {
+func (eq *ElasticQuota) Reserve(ctx context.Context, queueUnit *framework.QueueUnitInfo, _ map[string]framework.Admission) *framework.Status {
 	quotaName := getQuotaName(queueUnit.Unit)
 	ResourceUsageRecord(queueUnit.Unit.Spec.Resource, metrics.QuotaUsageByNamespace, queueUnit.Unit.Namespace, 1)
 
-	// Mark this queueUnit as scheduling to prevent Resize operations
+	// Mark the queue unit as scheduling so that Resize events arriving before DequeueComplete are
+	// skipped, keeping the reserved amount stable throughout the scheduling cycle.
 	eq.cache.MarkScheduling(queueUnit.Unit.UID)
 
 	err := eq.cache.Reserve(quotaName, queueUnit)
@@ -182,13 +178,12 @@ func (eq *ElasticQuota) Reserve(ctx context.Context, queueUnit *framework.QueueU
 }
 
 func (eq *ElasticQuota) Resize(ctx context.Context, old, new *framework.QueueUnitInfo) {
-	// Skip Resize if the queueUnit is being scheduled (between Reserve and DequeueComplete)
-	// This prevents resource calculation confusion from multiple updates during scheduling
+	// Skip Resize while the queue unit is mid-scheduling (between Reserve and DequeueComplete);
+	// applying spec updates during this window would desync the reserved resource accounting.
 	if eq.cache.IsScheduling(new.Unit.UID) {
-		klog.V(4).Infof("Skip Resize for scheduling queueUnit: %v", new.Name)
+		klog.V(4).Infof("skip Resize for scheduling queueUnit: %v", new.Name)
 		return
 	}
-
 	err := eq.cache.Resize(old, new)
 	if err != nil {
 		klog.ErrorS(err, "fail to resize", "queueunit", new.Name)
@@ -212,7 +207,7 @@ func (eq *ElasticQuota) DequeueComplete(ctx context.Context, queueUnit *framewor
 		klog.ErrorS(err, "fail to reserve", "queueunit", queueUnit.Name)
 	}
 
-	// Clear the scheduling mark to allow future Resize operations
+	// Scheduling has completed; allow future Resize events to apply again.
 	eq.cache.ClearScheduling(queueUnit.Unit.UID)
 }
 

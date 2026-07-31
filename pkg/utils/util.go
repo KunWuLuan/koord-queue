@@ -132,6 +132,9 @@ func IsResourceReleased(old, new *v1alpha1.QueueUnit) bool {
 // indicate whether the queueunit should be in the queue. queueunits are considered
 // to be in the queue when their resource requirements are not satisfied.
 // note that succeed and failed queueunits are not considered to be in the queue.
+// indicate whether the queueunit should be in the queue. queueunits are considered
+// to be in the queue when their resource requirements are not satisfied.
+// note that succeed and failed queueunits are not considered to be in the queue.
 func IsQueueUnitDequeued(qu *v1alpha1.QueueUnit) bool {
 	if IsV1VersionDequeued(qu) {
 		return true
@@ -420,27 +423,6 @@ func UpdateQueueUnitStatusAndAnnotations(name string, namespace string, queueNam
 		})
 
 	return queueUnit, err
-}
-
-// IsQueueUnitOversold compatible with legacy queue unit, if annotation is empty, we think it is guaranteed
-func IsQueueUnitOversold(queueUnit *framework.QueueUnitInfo) bool {
-	if queueUnit.Unit.Annotations == nil {
-		return false
-	}
-	if queueUnit.Unit.Annotations[AnnotationActualQuotaOversoldType] == QuotaOversoldTypeForce {
-		return true
-	}
-	return false
-}
-
-func GetQueueUnitOversoldAnnotations(annotations map[string]string) (string, string) {
-	quotaOversoldType, actualQuotaOversoldType := QuotaOversoldTypeForbidden, QuotaOversoldTypeForbidden
-	if annotations != nil {
-		quotaOversoldType = annotations[AnnotationQuotaOversoldType]
-		actualQuotaOversoldType = annotations[AnnotationActualQuotaOversoldType]
-	}
-
-	return quotaOversoldType, actualQuotaOversoldType
 }
 
 func IsQueueUnitSuspend(unit *v1alpha1.QueueUnit) bool {

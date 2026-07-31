@@ -184,6 +184,11 @@ func (q *PriorityQueue) findNextQueueUnit() (int32, *framework.QueueUnitInfo) {
 			return q.nextIdx, nil
 		}
 		qu = q.queue[q.nextIdx]
+		key := qu.Unit.Namespace + "/" + qu.Unit.Name
+		if _, updating := q.updating[key]; updating {
+			q.nextIdx++
+			continue
+		}
 		if utils.IsQueueUnitSatisfied(qu.Unit) {
 			q.nextIdx++
 			continue
@@ -542,6 +547,7 @@ func (q *PriorityQueue) Update(old, new *v1alpha1.QueueUnit) error {
 		if found {
 			q.queue = slices.Delete(q.queue, idx, idx+1)
 		}
+		delete(q.updating, key)
 		return nil
 	}
 	// add queueUnit to queue if not present
@@ -805,5 +811,7 @@ func (q *PriorityQueue) Complete(*apiv1alpha1.QueueUnit) {
 }
 
 func (q *PriorityQueue) DequeueSuccess(qu *v1alpha1.QueueUnit) {
-	delete(q.updating, qu.Namespace+"/"+qu.Name)
+	// Do not clear updating here. The updating flag is cleared in Update()
+	// when IsQueueUnitDequeued returns true (all pods running). Keeping updating
+	// prevents findNextQueueUnit from re-scheduling this unit before its pods are running.
 }

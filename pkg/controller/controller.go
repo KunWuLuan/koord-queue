@@ -107,7 +107,8 @@ func NewController(kubeConfigPath string, enableStrictConsistency bool, stopCh <
 		opts.PodInitialBackoffSeconds,
 		opts.PodMaxBackoffSeconds,
 		queueUnitLister,
-		enableStrictConsistency)
+		enableStrictConsistency,
+		recorder)
 	if err != nil {
 		klog.Fatalf("init multi scheduling queue failed %s", err)
 	}

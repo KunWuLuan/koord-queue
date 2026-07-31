@@ -113,11 +113,59 @@ func (c *cacheImpl) Resize(old, new *framework.QueueUnitInfo) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	err := c.unreserve(getQuotaName(old.Unit), old)
-	if err != nil {
-		return err
+	oldQuotaName := getQuotaName(old.Unit)
+	newQuotaName := getQuotaName(new.Unit)
+
+	// If the quota name changed, fall back to unreserve + reserve (each logs independently)
+	if oldQuotaName != newQuotaName {
+		err := c.unreserve(oldQuotaName, old)
+		if err != nil {
+			return err
+		}
+		return c.reserve(newQuotaName, new)
 	}
-	return c.reserve(getQuotaName(new.Unit), new)
+
+	// Quota name unchanged: walk the tree and call ResizeQueueUnit on each level.
+	// ResizeQueueUnit silently swaps the stored object when the resource amount is
+	// unchanged and logs a single line when it actually changes.
+	return c.resizeInPlace(newQuotaName, new)
+}
+
+// resizeInPlace walks the quota tree and calls ResizeQueueUnit on each level.
+func (c *cacheImpl) resizeInPlace(queueUnitQuota string, queueUnit *framework.QueueUnitInfo) error {
+	_, exist := c.reserved[queueUnit.Unit.UID]
+	if !exist {
+		return nil
+	}
+
+	currentQuota, exist := c.quotas[queueUnitQuota]
+	if !exist {
+		return fmt.Errorf("resize item failed, quota not found, "+
+			"itemName:%v, quotaName:%v", queueUnit.Name, queueUnitQuota)
+	}
+
+	visited := sets.NewString()
+	visitedQuotaPath := make([]string, 0)
+
+	for currentQuota != nil {
+		if visited.Has(key(currentQuota.Quota)) {
+			klog.Errorf("resize item failed, itemName:%v, quotaName:%v, "+
+				"cycle visited found:%v", queueUnit.Name, queueUnitQuota, strings.Join(visitedQuotaPath, ","))
+			break
+		}
+
+		visited.Insert(key(currentQuota.Quota))
+		visitedQuotaPath = append(visitedQuotaPath, key(currentQuota.Quota))
+
+		currentQuota.ResizeQueueUnit(key(currentQuota.Quota), queueUnit)
+
+		if parent, ok := c.quotaParent[key(currentQuota.Quota)]; ok {
+			currentQuota = c.quotas[parent]
+		} else {
+			break
+		}
+	}
+	return nil
 }
 
 func (c *cacheImpl) Reserve(queueUnitQuota string, queueUnit *framework.QueueUnitInfo) error {

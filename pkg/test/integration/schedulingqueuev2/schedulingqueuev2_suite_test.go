@@ -100,7 +100,7 @@ var _ = Describe("SchedulingQueueV2", Ordered, func() {
 		)
 
 		multiQueue, _ = multischedulingqueue.NewMultiSchedulingQueue(fw, 1, 10,
-			queueUnitLister, false)
+			queueUnitLister, false, nil)
 		sched, _ = scheduler.NewScheduler(multiQueue, fw, cli, recorder, false, false, false, 10, "")
 		quCtrl := controllers.NewQueueUnitController(2, false, cli, queueUnitInformer, queueUnitLister)
 

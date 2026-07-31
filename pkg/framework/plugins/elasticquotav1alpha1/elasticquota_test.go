@@ -21,7 +21,6 @@ import (
 	"github.com/koordinator-sh/koord-queue/pkg/framework"
 	"github.com/koordinator-sh/koord-queue/pkg/framework/apis/elasticquota/scheduling/v1alpha1"
 	"github.com/koordinator-sh/koord-queue/pkg/framework/runtime"
-	"github.com/koordinator-sh/koord-queue/pkg/utils"
 )
 
 func TestPlugin_Filter_Reserve_Unreseve(t *testing.T) {
@@ -45,7 +44,6 @@ func TestPlugin_Filter_Reserve_Unreseve(t *testing.T) {
 	unit1.Spec = api.QueueUnitSpec{}
 	unit1.Spec.Resource = v1.ResourceList{"cpu": resource.MustParse("5")}
 	unit1.Annotations = map[string]string{
-		utils.AnnotationActualQuotaOversoldType: utils.QuotaOversoldTypeForce,
 	}
 	queueUnit1 := framework.NewQueueUnitInfo(unit1)
 
@@ -58,7 +56,6 @@ func TestPlugin_Filter_Reserve_Unreseve(t *testing.T) {
 	}
 	unit2.Spec.Resource = v1.ResourceList{"cpu": resource.MustParse("3")}
 	unit2.Annotations = map[string]string{
-		utils.AnnotationActualQuotaOversoldType: utils.QuotaOversoldTypeForce,
 	}
 	queueUnit2 := framework.NewQueueUnitInfo(unit2)
 
@@ -91,14 +88,12 @@ func TestPlugin_Filter_Reserve_Unreseve(t *testing.T) {
 				QuotaNameLabelKey: "test1",
 			}
 			unit3.Annotations = map[string]string{
-				utils.AnnotationQuotaOversoldType: utils.QuotaOversoldTypeForce,
 			}
 			unit3.Spec.Resource = v1.ResourceList{"cpu": resource.MustParse("3")}
 			queueUnit3 := framework.NewQueueUnitInfo(unit3)
 
 			status := plugin.Filter(context.Background(), queueUnit3, nil)
 			assert.Equal(t, status.Code(), framework.Success)
-			assert.Equal(t, utils.QuotaOversoldTypeForce, unit3.Annotations[utils.AnnotationActualQuotaOversoldType])
 		}
 		{
 			unit4 := &api.QueueUnit{}
@@ -109,14 +104,12 @@ func TestPlugin_Filter_Reserve_Unreseve(t *testing.T) {
 				QuotaNameLabelKey: "test1",
 			}
 			unit4.Annotations = map[string]string{
-				utils.AnnotationQuotaOversoldType: utils.QuotaOversoldTypeForce,
 			}
 			unit4.Spec.Resource = v1.ResourceList{"cpu": resource.MustParse("300000")}
 			queueUnit4 := framework.NewQueueUnitInfo(unit4)
 
 			status := plugin.Filter(context.Background(), queueUnit4, nil)
 			assert.Equal(t, status.Code(), framework.Unschedulable)
-			assert.Equal(t, "", unit4.Annotations[utils.AnnotationActualQuotaOversoldType])
 		}
 		{
 			unit5 := &api.QueueUnit{}
@@ -127,14 +120,12 @@ func TestPlugin_Filter_Reserve_Unreseve(t *testing.T) {
 				QuotaNameLabelKey: "test1",
 			}
 			unit5.Annotations = map[string]string{
-				utils.AnnotationQuotaOversoldType: utils.QuotaOversoldTypeForbidden,
 			}
 			unit5.Spec.Resource = v1.ResourceList{"cpu": resource.MustParse("3")}
 			queueUnit5 := framework.NewQueueUnitInfo(unit5)
 
 			status := plugin.Filter(context.Background(), queueUnit5, nil)
 			assert.Equal(t, status.Code(), framework.Success)
-			assert.Equal(t, utils.QuotaOversoldTypeForbidden, unit5.Annotations[utils.AnnotationActualQuotaOversoldType])
 		}
 		{
 			unit6 := &api.QueueUnit{}
@@ -145,14 +136,12 @@ func TestPlugin_Filter_Reserve_Unreseve(t *testing.T) {
 				QuotaNameLabelKey: "test1",
 			}
 			unit6.Annotations = map[string]string{
-				utils.AnnotationQuotaOversoldType: utils.QuotaOversoldTypeAccept,
 			}
 			unit6.Spec.Resource = v1.ResourceList{"cpu": resource.MustParse("3")}
 			queueUnit6 := framework.NewQueueUnitInfo(unit6)
 
 			status := plugin.Filter(context.Background(), queueUnit6, nil)
 			assert.Equal(t, status.Code(), framework.Success)
-			assert.Equal(t, utils.QuotaOversoldTypeForbidden, unit6.Annotations[utils.AnnotationActualQuotaOversoldType])
 		}
 		{
 			unit7 := &api.QueueUnit{}
@@ -163,7 +152,6 @@ func TestPlugin_Filter_Reserve_Unreseve(t *testing.T) {
 				QuotaNameLabelKey: "test1",
 			}
 			unit7.Annotations = map[string]string{
-				utils.AnnotationQuotaOversoldType: utils.QuotaOversoldTypeAccept,
 			}
 			unit7.Spec.Resource = v1.ResourceList{"cpu": resource.MustParse("4")}
 			queueUnit7 := framework.NewQueueUnitInfo(unit7)
@@ -180,7 +168,6 @@ func TestPlugin_Filter_Reserve_Unreseve(t *testing.T) {
 				QuotaNameLabelKey: "test1",
 			}
 			unit8.Annotations = map[string]string{
-				utils.AnnotationQuotaOversoldType: utils.QuotaOversoldTypeForce,
 			}
 			unit8.Spec.Resource = v1.ResourceList{"cpu": resource.MustParse("4")}
 			queueUnit8 := framework.NewQueueUnitInfo(unit8)
