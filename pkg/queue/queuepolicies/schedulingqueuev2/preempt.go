@@ -56,6 +56,8 @@ func (q *PriorityQueue) preemptQueueUnits(preempted []*framework.QueueUnitInfo, 
 				if err != nil {
 					return err
 				}
+				klog.V(2).InfoS("preempted victim, waiting for job extension to reclaim", "queue", q.name, "victim", klog.KObj(newQu))
+				q.fw.EventRecorder().Event(newQuCopy, "Warning", "Preempted", fmt.Sprintf("queueUnit %s is preempted by higher priority unit, waiting for job extension to reclaim resources", newQu.Name))
 				return nil
 			})
 			if err != nil {

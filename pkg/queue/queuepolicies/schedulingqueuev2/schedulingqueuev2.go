@@ -567,6 +567,13 @@ func (q *PriorityQueue) Update(old, new *v1alpha1.QueueUnit) error {
 	if !utils.IsQueueUnitReservedAnyResource(new) {
 		klog.V(2).InfoS("delete qu from assumed", "queue", q.name, "qu", klog.KObj(new), "reason", "not reserved")
 		delete(q.assumed, key)
+		if !utils.IsQueueUnitSatisfied(new) {
+			// The job-extension has reclaimed resources (Replicas reduced below expected).
+			// Clear updating so findNextQueueUnit can re-schedule this unit.
+			klog.V(2).InfoS("clear updating after reclaim", "queue", q.name, "qu", klog.KObj(new))
+			delete(q.updating, key)
+			q.fw.EventRecorder().Event(new, "Normal", "Reclaimed", fmt.Sprintf("resources reclaimed, queueUnit %s is ready for re-scheduling", new.Name))
+		}
 	} else if !updating && utils.IsQueueUnitAllRunning(new) {
 		klog.V(2).InfoS("delete qu from assumed", "queue", q.name, "qu", klog.KObj(new), "reason", "all running")
 		q.resetNextIdxFlag = true
