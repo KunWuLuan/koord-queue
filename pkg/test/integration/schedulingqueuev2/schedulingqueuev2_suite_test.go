@@ -69,7 +69,7 @@ var _ = Describe("SchedulingQueueV2", Ordered, func() {
 	BeforeAll(func() {
 		ctx, cancel = context.WithCancel(context.Background())
 		fw, plgs, cli = testutils.NewFrameworkForTesting()
-		eqcli = plgs[elasticquotav1alpha1.Name].(*elasticquotav1alpha1.ElasticQuota).GetClient()
+		eqcli = plgs[elasticquotav1alpha1.Name].(*elasticquotav1alpha1.ElasticQuota).GetElasticQuotaClient()
 		kubeCli = fake.NewSimpleClientset()
 
 		// Create event broadcaster

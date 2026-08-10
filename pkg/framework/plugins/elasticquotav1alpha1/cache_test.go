@@ -2,6 +2,9 @@ package elasticquotav1alpha1
 
 import (
 	"fmt"
+	"testing"
+	"time"
+
 	api "github.com/koordinator-sh/koord-queue/pkg/apis/scheduling/v1alpha1"
 	"github.com/koordinator-sh/koord-queue/pkg/framework"
 	"github.com/koordinator-sh/koord-queue/pkg/framework/apis/elasticquota/scheduling/v1alpha1"
@@ -10,8 +13,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"testing"
-	"time"
 )
 
 //import (
@@ -296,8 +297,7 @@ func TestThreeLevelQuotaE2E(t *testing.T) {
 		unit31.Labels = map[string]string{
 			QuotaNameLabelKey: "test31",
 		}
-		unit31.Annotations = map[string]string{
-		}
+		unit31.Annotations = map[string]string{}
 		queueUnit31 := framework.NewQueueUnitInfo(unit31)
 		cache.Reserve("test31", queueUnit31)
 
@@ -309,8 +309,7 @@ func TestThreeLevelQuotaE2E(t *testing.T) {
 		unit32.Labels = map[string]string{
 			QuotaNameLabelKey: "test32",
 		}
-		unit32.Annotations = map[string]string{
-		}
+		unit32.Annotations = map[string]string{}
 		queueUnit32 := framework.NewQueueUnitInfo(unit32)
 		cache.Reserve("test32", queueUnit32)
 
@@ -322,8 +321,7 @@ func TestThreeLevelQuotaE2E(t *testing.T) {
 		unit2.Labels = map[string]string{
 			QuotaNameLabelKey: "test2",
 		}
-		unit2.Annotations = map[string]string{
-		}
+		unit2.Annotations = map[string]string{}
 		queueUnit2 := framework.NewQueueUnitInfo(unit2)
 		err := cache.CheckUsage("test2", queueUnit2, 1)
 		assert.True(t, err == nil)
@@ -337,8 +335,7 @@ func TestThreeLevelQuotaE2E(t *testing.T) {
 		unit1.Labels = map[string]string{
 			QuotaNameLabelKey: "test1",
 		}
-		unit1.Annotations = map[string]string{
-		}
+		unit1.Annotations = map[string]string{}
 		queueUnit1 := framework.NewQueueUnitInfo(unit1)
 		err = cache.CheckUsage("test1", queueUnit1, 1)
 		assert.True(t, err == nil)
@@ -425,8 +422,7 @@ func TestThreeLevelQuotaE2E(t *testing.T) {
 		unit2.Labels = map[string]string{
 			QuotaNameLabelKey: "test2",
 		}
-		unit2.Annotations = map[string]string{
-		}
+		unit2.Annotations = map[string]string{}
 		queueUnit2 := framework.NewQueueUnitInfo(unit2)
 		err := cache.CheckUsage("test2", queueUnit2, 1)
 		assert.True(t, err == nil)
@@ -440,8 +436,7 @@ func TestThreeLevelQuotaE2E(t *testing.T) {
 		unit31.Labels = map[string]string{
 			QuotaNameLabelKey: "test31",
 		}
-		unit31.Annotations = map[string]string{
-		}
+		unit31.Annotations = map[string]string{}
 		queueUnit31 := framework.NewQueueUnitInfo(unit31)
 		err = cache.CheckUsage("test31", queueUnit31, 1)
 		assert.True(t, err == nil)
@@ -454,8 +449,7 @@ func TestThreeLevelQuotaE2E(t *testing.T) {
 		unit32.Labels = map[string]string{
 			QuotaNameLabelKey: "test32",
 		}
-		unit32.Annotations = map[string]string{
-		}
+		unit32.Annotations = map[string]string{}
 		queueUnit32 := framework.NewQueueUnitInfo(unit32)
 		err = cache.CheckUsage("test32", queueUnit32, 1)
 		assert.True(t, err == nil)
@@ -468,8 +462,7 @@ func TestThreeLevelQuotaE2E(t *testing.T) {
 		unit1.Labels = map[string]string{
 			QuotaNameLabelKey: "test1",
 		}
-		unit1.Annotations = map[string]string{
-		}
+		unit1.Annotations = map[string]string{}
 		queueUnit1 := framework.NewQueueUnitInfo(unit1)
 		err = cache.CheckUsage("test1", queueUnit1, 1)
 		assert.True(t, err == nil)
@@ -492,8 +485,7 @@ func Test_cacheImpl_Reserve_Unreserve(t *testing.T) {
 		unit1.Name = "job1"
 		unit1.Spec = api.QueueUnitSpec{}
 		unit1.Spec.Resource = v1.ResourceList{"cpu": resource.MustParse("5")}
-		unit1.Annotations = map[string]string{
-		}
+		unit1.Annotations = map[string]string{}
 		queueUnit1 := framework.NewQueueUnitInfo(unit1)
 
 		unit2 := &api.QueueUnit{}
@@ -501,8 +493,7 @@ func Test_cacheImpl_Reserve_Unreserve(t *testing.T) {
 		unit2.Spec = api.QueueUnitSpec{}
 		unit2.Name = "job2"
 		unit2.Spec.Resource = v1.ResourceList{"cpu": resource.MustParse("3")}
-		unit2.Annotations = map[string]string{
-		}
+		unit2.Annotations = map[string]string{}
 		queueUnit2 := framework.NewQueueUnitInfo(unit2)
 
 		{
@@ -614,8 +605,7 @@ func Test_cacheImpl_Reserve_Unreserve(t *testing.T) {
 		unit1.Spec = api.QueueUnitSpec{}
 		unit1.Spec.Resource = v1.ResourceList{"cpu": resource.MustParse("8")}
 		queueUnit1 := framework.NewQueueUnitInfo(unit1)
-		unit1.Annotations = map[string]string{
-		}
+		unit1.Annotations = map[string]string{}
 
 		{
 			err := cache.Reserve("test1", queueUnit1)

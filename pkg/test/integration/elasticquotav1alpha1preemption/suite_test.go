@@ -17,7 +17,6 @@ import (
 	"github.com/koordinator-sh/koord-queue/pkg/controllers"
 	"github.com/koordinator-sh/koord-queue/pkg/framework"
 	eqversioned "github.com/koordinator-sh/koord-queue/pkg/framework/apis/elasticquota/client/clientset/versioned"
-	elasticquotatree "github.com/koordinator-sh/koord-queue/pkg/framework/plugins/elasticquota"
 	"github.com/koordinator-sh/koord-queue/pkg/framework/plugins/elasticquotav1alpha1"
 	"github.com/koordinator-sh/koord-queue/pkg/framework/plugins/priority"
 	"github.com/koordinator-sh/koord-queue/pkg/framework/runtime"
@@ -192,7 +191,7 @@ var _ = BeforeSuite(func() {
 	// enables every registry entry.
 	registry := runtime.Registry{
 		priority.Name:         priority.New,
-		elasticquotatree.Name: elasticquotav1alpha1.New, // key "ElasticQuota"; plugin Name() == "ElasticQuotaV2"
+		"ElasticQuota":          elasticquotav1alpha1.New, // key "ElasticQuota"; plugin Name() == "ElasticQuotaV2"
 	}
 	fw, err = runtime.NewFramework(registry, cfg, "", kubeInformerFactory, queueUnitInformerFactory, recorder, cli, 1, nil)
 	Expect(err).NotTo(HaveOccurred())

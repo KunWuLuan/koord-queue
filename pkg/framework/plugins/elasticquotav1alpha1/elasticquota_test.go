@@ -43,8 +43,7 @@ func TestPlugin_Filter_Reserve_Unreseve(t *testing.T) {
 	}
 	unit1.Spec = api.QueueUnitSpec{}
 	unit1.Spec.Resource = v1.ResourceList{"cpu": resource.MustParse("5")}
-	unit1.Annotations = map[string]string{
-	}
+	unit1.Annotations = map[string]string{}
 	queueUnit1 := framework.NewQueueUnitInfo(unit1)
 
 	unit2 := &api.QueueUnit{}
@@ -55,8 +54,7 @@ func TestPlugin_Filter_Reserve_Unreseve(t *testing.T) {
 		QuotaNameLabelKey: "test1",
 	}
 	unit2.Spec.Resource = v1.ResourceList{"cpu": resource.MustParse("3")}
-	unit2.Annotations = map[string]string{
-	}
+	unit2.Annotations = map[string]string{}
 	queueUnit2 := framework.NewQueueUnitInfo(unit2)
 
 	cache := plugin.cache.(*cacheImpl)
@@ -87,8 +85,7 @@ func TestPlugin_Filter_Reserve_Unreseve(t *testing.T) {
 			unit3.Labels = map[string]string{
 				QuotaNameLabelKey: "test1",
 			}
-			unit3.Annotations = map[string]string{
-			}
+			unit3.Annotations = map[string]string{}
 			unit3.Spec.Resource = v1.ResourceList{"cpu": resource.MustParse("3")}
 			queueUnit3 := framework.NewQueueUnitInfo(unit3)
 
@@ -103,8 +100,7 @@ func TestPlugin_Filter_Reserve_Unreseve(t *testing.T) {
 			unit4.Labels = map[string]string{
 				QuotaNameLabelKey: "test1",
 			}
-			unit4.Annotations = map[string]string{
-			}
+			unit4.Annotations = map[string]string{}
 			unit4.Spec.Resource = v1.ResourceList{"cpu": resource.MustParse("300000")}
 			queueUnit4 := framework.NewQueueUnitInfo(unit4)
 
@@ -119,8 +115,7 @@ func TestPlugin_Filter_Reserve_Unreseve(t *testing.T) {
 			unit5.Labels = map[string]string{
 				QuotaNameLabelKey: "test1",
 			}
-			unit5.Annotations = map[string]string{
-			}
+			unit5.Annotations = map[string]string{}
 			unit5.Spec.Resource = v1.ResourceList{"cpu": resource.MustParse("3")}
 			queueUnit5 := framework.NewQueueUnitInfo(unit5)
 
@@ -135,8 +130,7 @@ func TestPlugin_Filter_Reserve_Unreseve(t *testing.T) {
 			unit6.Labels = map[string]string{
 				QuotaNameLabelKey: "test1",
 			}
-			unit6.Annotations = map[string]string{
-			}
+			unit6.Annotations = map[string]string{}
 			unit6.Spec.Resource = v1.ResourceList{"cpu": resource.MustParse("3")}
 			queueUnit6 := framework.NewQueueUnitInfo(unit6)
 
@@ -151,8 +145,7 @@ func TestPlugin_Filter_Reserve_Unreseve(t *testing.T) {
 			unit7.Labels = map[string]string{
 				QuotaNameLabelKey: "test1",
 			}
-			unit7.Annotations = map[string]string{
-			}
+			unit7.Annotations = map[string]string{}
 			unit7.Spec.Resource = v1.ResourceList{"cpu": resource.MustParse("4")}
 			queueUnit7 := framework.NewQueueUnitInfo(unit7)
 
@@ -167,8 +160,7 @@ func TestPlugin_Filter_Reserve_Unreseve(t *testing.T) {
 			unit8.Labels = map[string]string{
 				QuotaNameLabelKey: "test1",
 			}
-			unit8.Annotations = map[string]string{
-			}
+			unit8.Annotations = map[string]string{}
 			unit8.Spec.Resource = v1.ResourceList{"cpu": resource.MustParse("4")}
 			queueUnit8 := framework.NewQueueUnitInfo(unit8)
 

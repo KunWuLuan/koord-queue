@@ -154,7 +154,7 @@ func (d *ResourceReporter) syncInFlightWorkers(ctx context.Context, log logr.Log
 	running := 0
 	pd2Res := map[string]corev1.ResourceList{}
 	for _, pod := range pods {
-				// 	return ctrl.Result{RequeueAfter: DefaultRequeuePeriod}, nil
+		// 	return ctrl.Result{RequeueAfter: DefaultRequeuePeriod}, nil
 		// }
 		res := util.GetPodRequestsAndLimits(&pod.Spec)
 		pd2Res[pod.Namespace+"/"+pod.Name] = res
@@ -195,7 +195,7 @@ func (d *ResourceReporter) syncInFlightWorkers(ctx context.Context, log logr.Log
 	runningByPs := map[string]int64{}
 	resByPs := map[string]corev1.ResourceList{}
 	for ps, pss := range podsByPs {
-				// 	return ctrl.Result{RequeueAfter: DefaultRequeuePeriod}, nil
+		// 	return ctrl.Result{RequeueAfter: DefaultRequeuePeriod}, nil
 		// }
 		// log.V(3).Info("sync podset", "podset", ps, "podcount", len(pss))
 		runningByPs[ps] = 0
@@ -394,7 +394,6 @@ func (d *ResourceReporter) reconcileReclaim(admission []v1alpha1.Admission, admi
 	}
 	return xorAdmit
 }
-
 
 // if request > admitted, then check if the number of running and pending pods is less than request
 func (d *ResourceReporter) reconcileOveradmission(ctx context.Context, log logr.Logger, qu *v1alpha1.QueueUnit, podsByPs map[string][]*corev1.Pod) (needRequeue bool, err error) {
