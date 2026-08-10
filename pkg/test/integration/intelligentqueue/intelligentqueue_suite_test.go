@@ -94,7 +94,7 @@ var _ = Describe("IntelligentQueue", Ordered, func() {
 			if !ok {
 				return nil, nil
 			}
-			return []string{qu.Annotations["kube-queue/quota-fullname"]}, nil
+			return []string{qu.Annotations["koord-queue/quota-fullname"]}, nil
 		}})
 
 		// Queue will be auto-created from ElasticQuota by the handler

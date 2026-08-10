@@ -6,11 +6,11 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/kube-queue/api/pkg/apis/scheduling/v1alpha1"
-	eqv1alpha1 "github.com/kube-queue/kube-queue/pkg/framework/apis/elasticquota/scheduling/v1alpha1"
-	"github.com/kube-queue/kube-queue/pkg/framework/plugins/elasticquotav1alpha1"
-	"github.com/kube-queue/kube-queue/pkg/queue/queuepolicies/schedulingqueuev2"
-	"github.com/kube-queue/kube-queue/pkg/test/testutils/queueunits"
+	"github.com/koordinator-sh/koord-queue/pkg/apis/scheduling/v1alpha1"
+	eqv1alpha1 "github.com/koordinator-sh/koord-queue/pkg/framework/apis/elasticquota/scheduling/v1alpha1"
+	"github.com/koordinator-sh/koord-queue/pkg/framework/plugins/elasticquotav1alpha1"
+	"github.com/koordinator-sh/koord-queue/pkg/queue/queuepolicies/schedulingqueuev2"
+	"github.com/koordinator-sh/koord-queue/pkg/test/testutils/queueunits"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
