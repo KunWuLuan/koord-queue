@@ -25,7 +25,7 @@ var _ = Describe("ElasticQuotaV2 priority ordering after preemption", Ordered, f
 
 	const (
 		quotaName = "order-preempt-quota"
-		queueNS   = "kube-queue"
+		queueNS   = "koord-queue"
 		unitNS    = "default"
 	)
 

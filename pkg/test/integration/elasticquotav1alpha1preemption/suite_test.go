@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/koordinator-sh/koord-queue/pkg/apis/config"
 	"github.com/koordinator-sh/koord-queue/pkg/apis/scheduling/v1alpha1"
 	"github.com/koordinator-sh/koord-queue/pkg/client/clientset/versioned"
 	externalversions "github.com/koordinator-sh/koord-queue/pkg/client/informers/externalversions"
@@ -159,9 +160,9 @@ var _ = BeforeSuite(func() {
 	kubeClient, err := kubernetes.NewForConfig(cfg)
 	Expect(err).NotTo(HaveOccurred())
 
-	// Create the kube-queue namespace (Queue objects live here).
+	// Create the koord-queue namespace (Queue objects live here).
 	_, err = kubeClient.CoreV1().Namespaces().Create(ctx, &corev1.Namespace{
-		ObjectMeta: metav1.ObjectMeta{Name: "kube-queue"},
+		ObjectMeta: metav1.ObjectMeta{Name: "koord-queue"},
 	}, metav1.CreateOptions{})
 	Expect(err).NotTo(HaveOccurred())
 
@@ -187,13 +188,16 @@ var _ = BeforeSuite(func() {
 
 	By("building the framework with the real elasticquotav1alpha1 (ElasticQuotaV2) plugin")
 	// Unlike plugins.NewFakeRegistry (which forces the fake ElasticQuota client), register the real
-	// New constructors so the plugin talks to the envtest apiserver via cfg. pluginconfig=nil
-	// enables every registry entry.
+	// New constructors so the plugin talks to the envtest apiserver via cfg. NewFramework only
+	// instantiates plugins listed in pluginconfig.Plugins, so enable every registry entry explicitly.
 	registry := runtime.Registry{
 		priority.Name:         priority.New,
 		"ElasticQuota":          elasticquotav1alpha1.New, // key "ElasticQuota"; plugin Name() == "ElasticQuotaV2"
 	}
-	fw, err = runtime.NewFramework(registry, cfg, "", kubeInformerFactory, queueUnitInformerFactory, recorder, cli, 1, nil)
+	pluginConfig := &config.KoordQueueConfiguration{
+		Plugins: []config.Plugin{{Name: priority.Name}, {Name: "ElasticQuota"}},
+	}
+	fw, err = runtime.NewFramework(registry, cfg, "", kubeInformerFactory, queueUnitInformerFactory, recorder, cli, 1, pluginConfig)
 	Expect(err).NotTo(HaveOccurred())
 
 	var multiQueue queue.MultiSchedulingQueue

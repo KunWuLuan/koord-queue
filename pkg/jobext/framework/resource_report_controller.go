@@ -350,7 +350,7 @@ func (d *ResourceReporter) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	}
 
 	jobStatus, _ := handle.genericJobExtension.GetJobStatus(ctx, object, d.client)
-	if jobStatus != Running {
+	if jobStatus != Running && jobStatus != Pending {
 		return ctrl.Result{}, nil
 	}
 

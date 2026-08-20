@@ -25,7 +25,7 @@ var _ = Describe("ElasticQuotaV2 victim re-scheduling after reclaim", Ordered, f
 
 	const (
 		quotaName = "reclaim-resched-quota"
-		queueNS   = "kube-queue"
+		queueNS   = "koord-queue"
 		unitNS    = "default"
 	)
 

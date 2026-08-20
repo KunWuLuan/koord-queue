@@ -26,7 +26,7 @@ import (
 var _ = DescribeTable("ElasticQuotaV2 Reserve-level preemption",
 	func(policy string) {
 		const (
-			queueNS = "kube-queue"
+			queueNS = "koord-queue"
 			unitNS  = "default"
 		)
 		quotaName := fmt.Sprintf("reserve-preempt-%s", strings.ToLower(policy))

@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/koordinator-sh/koord-queue/pkg/apis/config"
 	"github.com/koordinator-sh/koord-queue/pkg/apis/scheduling/v1alpha1"
 	"github.com/koordinator-sh/koord-queue/pkg/client/clientset/versioned"
 	externalversions "github.com/koordinator-sh/koord-queue/pkg/client/informers/externalversions"
@@ -171,7 +172,7 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 
 	_, err = kubeClient.CoreV1().Namespaces().Create(ctx, &corev1.Namespace{
-		ObjectMeta: metav1.ObjectMeta{Name: "kube-queue"},
+		ObjectMeta: metav1.ObjectMeta{Name: "koord-queue"},
 	}, metav1.CreateOptions{})
 	Expect(err).NotTo(HaveOccurred())
 
@@ -200,7 +201,13 @@ var _ = BeforeSuite(func() {
 		priority.Name:         priority.New,
 		"ElasticQuota":            elasticquotav1alpha1.New, // key "ElasticQuota"; plugin Name() == "ElasticQuotaV2"
 	}
-	fw, err = runtime.NewFramework(registry, cfg, "", kubeInformerFactory, queueUnitInformerFactory, recorder, cli, 1, nil)
+	// NewFramework only instantiates plugins listed in pluginconfig.Plugins, so enable
+	// every registry entry explicitly (a nil pluginconfig enables nothing and leaves the
+	// QueueUnit mapping func nil).
+	pluginConfig := &config.KoordQueueConfiguration{
+		Plugins: []config.Plugin{{Name: priority.Name}, {Name: "ElasticQuota"}},
+	}
+	fw, err = runtime.NewFramework(registry, cfg, "", kubeInformerFactory, queueUnitInformerFactory, recorder, cli, 1, pluginConfig)
 	Expect(err).NotTo(HaveOccurred())
 
 	var multiQueue queue.MultiSchedulingQueue

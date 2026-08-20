@@ -39,7 +39,7 @@ var _ = Describe("wait-for-pods-running quota over-admission protection", Ordere
 
 	const (
 		quotaName = "overadmit-quota"
-		queueNS   = "kube-queue"
+		queueNS   = "koord-queue"
 		unitNS    = "default"
 		// The whole guaranteed quota fits exactly ONE unit: Min == Max == cpu:2, every unit asks 2.
 		unitCPU = "2"

@@ -28,7 +28,7 @@ var _ = Describe("ElasticQuotaV2 queue-level preemption", Ordered, func() {
 
 	const (
 		quotaName = "preempt-quota"
-		queueNS   = "kube-queue"
+		queueNS   = "koord-queue"
 		unitNS    = "default"
 	)
 
