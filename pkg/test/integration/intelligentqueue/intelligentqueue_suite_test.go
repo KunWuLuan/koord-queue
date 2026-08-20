@@ -73,7 +73,7 @@ var _ = Describe("IntelligentQueue", Ordered, func() {
 	BeforeAll(func() {
 		ctx, cancel = context.WithCancel(context.Background())
 		fw, plgs, cli = testutils.NewFrameworkForTesting()
-		eqcli = plgs[elasticquotav1alpha1.Name].(*elasticquotav1alpha1.ElasticQuota).GetClient()
+		eqcli = plgs[elasticquotav1alpha1.Name].(*elasticquotav1alpha1.ElasticQuota).GetElasticQuotaClient()
 		kubeCli = fake.NewSimpleClientset()
 
 		// Create event broadcaster
@@ -94,7 +94,7 @@ var _ = Describe("IntelligentQueue", Ordered, func() {
 			if !ok {
 				return nil, nil
 			}
-			return []string{qu.Annotations["kube-queue/quota-fullname"]}, nil
+			return []string{qu.Annotations["koord-queue/quota-fullname"]}, nil
 		}})
 
 		// Queue will be auto-created from ElasticQuota by the handler
@@ -106,7 +106,7 @@ var _ = Describe("IntelligentQueue", Ordered, func() {
 		)
 
 		multiQueue, _ = multischedulingqueue.NewMultiSchedulingQueue(fw, 1, 10,
-			queueUnitLister, false)
+			queueUnitLister, false, nil)
 		sched, _ = scheduler.NewScheduler(multiQueue, fw, cli, recorder, false, false, false, 10, "")
 		quCtrl := controllers.NewQueueUnitController(2, false, cli, queueUnitInformer, queueUnitLister)
 

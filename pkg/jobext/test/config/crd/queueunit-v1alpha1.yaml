@@ -8418,6 +8418,9 @@ spec:
               attempts:
                 format: int64
                 type: integer
+              lastAllocateTime:
+                format: date-time
+                type: string
               lastUpdateTime:
                 format: date-time
                 type: string

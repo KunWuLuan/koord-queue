@@ -510,12 +510,16 @@ func Test_syncInFlightWorkers(t *testing.T) {
 	tests := []struct {
 		name string
 		pods []client.Object
+		// phase of the QueueUnit. Only Running syncs qu.Spec.Resource;
+		// Dequeued still updates Admissions.Running from scheduled pods.
+		phase v1alpha1.QueueUnitPhase
 
 		expectRes       map[corev1.ResourceName]int64
 		expectAdmission []v1alpha1.Admission
 	}{
 		{
-			name: "pods with ps annotations",
+			name:  "pods with ps annotations",
+			phase: v1alpha1.Running,
 			pods: []client.Object{
 				wrappers.MakePod().Namespace("default").Name("pod1").Annotation(util.RelatedPodSetAnnoKey, "ps-1").Node("mock").Res(map[v1.ResourceName]string{"cpu": "1"}).Obj(),
 				wrappers.MakePod().Namespace("default").Name("pod2").Annotation(util.RelatedPodSetAnnoKey, "gpu-ps").Node("mock").Res(map[v1.ResourceName]string{"memory": "5Gi", "nvidia.com/gpu": "8"}).Obj(),
@@ -529,7 +533,22 @@ func Test_syncInFlightWorkers(t *testing.T) {
 				{Name: "gpu-ps", Replicas: 1, Running: 1, Resources: v1.ResourceList{v1.ResourceMemory: resource.MustParse("5Gi"), "nvidia.com/gpu": resource.MustParse("8")}}},
 		},
 		{
-			name: "pods without ps annotations",
+			// scheduled-but-not-running pods (e.g. pulling image) should be counted
+			// as running while the QueueUnit is still Dequeued, but neither
+			// qu.Spec.Resource nor Admissions[i].Resources may be touched in this
+			// phase: quota accounting stays purely admission-based.
+			name:  "dequeued phase counts scheduled pods as running",
+			phase: v1alpha1.Dequeued,
+			pods: []client.Object{
+				wrappers.MakePod().Namespace("default").Name("pod1").Annotation(util.RelatedPodSetAnnoKey, "ps-1").Node("mock").Phase(v1.PodPending).Res(map[v1.ResourceName]string{"cpu": "1"}).Obj(),
+			},
+			expectRes: map[v1.ResourceName]int64{},
+			expectAdmission: []v1alpha1.Admission{{Name: "ps-1", Replicas: 1, Running: 1},
+				{Name: "gpu-ps", Replicas: 1}},
+		},
+		{
+			name:  "pods without ps annotations",
+			phase: v1alpha1.Running,
 			pods: []client.Object{
 				wrappers.MakePod().Namespace("default").Name("pod1").Node("mock").Res(map[v1.ResourceName]string{"cpu": "1"}).Obj(),
 				wrappers.MakePod().Namespace("default").Name("pod2").Node("mock").Res(map[v1.ResourceName]string{"memory": "5Gi", "nvidia.com/gpu": "8"}).Obj(),
@@ -551,6 +570,7 @@ func Test_syncInFlightWorkers(t *testing.T) {
 				PodSetSimple("gpu-ps", map[string]int64{"memory": 5 * 1024 * 1024 * 1024, "nvidia.com/gpu": 1}, 1).
 				Admission("ps-1", map[string]int64{}, 1).
 				Admission("gpu-ps", map[string]int64{}, 1).
+				Phase(tt.phase).
 				QueueUnit()
 
 			builder := fake.NewClientBuilder().WithScheme(scheme).WithObjects(qu).WithStatusSubresource(&v1alpha1.QueueUnit{}).

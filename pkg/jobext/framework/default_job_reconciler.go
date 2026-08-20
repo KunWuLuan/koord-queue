@@ -2,6 +2,8 @@ package framework
 
 import (
 	"context"
+	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -17,6 +19,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
+	"k8s.io/klog/v2"
 	"k8s.io/utils/trace"
 
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -32,6 +35,32 @@ var EnableNetworkAware bool
 var EnablePodReclaim bool
 var DefaultRequeuePeriod = time.Second * 60
 var Suffix = "re"
+
+// PriorityAnnotationKey lets a job declare an explicit queue-unit priority via an annotation.
+// When present and parseable, it overrides the priority derived from the job's PriorityClass or
+// pod template.
+const PriorityAnnotationKey = "scheduling.x-k8s.io/priority"
+
+// priorityFromAnnotation returns the priority parsed from the scheduling.x-k8s.io/priority
+// annotation on the object, or nil if the annotation is absent or not a valid int32.
+func priorityFromAnnotation(object client.Object) *int32 {
+	ann := object.GetAnnotations()
+	if ann == nil {
+		return nil
+	}
+	raw, ok := ann[PriorityAnnotationKey]
+	if !ok || raw == "" {
+		return nil
+	}
+	v, err := strconv.ParseInt(raw, 10, 32)
+	if err != nil {
+		klog.Warningf("ignoring invalid %s annotation %q on %s/%s: %v",
+			PriorityAnnotationKey, raw, object.GetNamespace(), object.GetName(), err)
+		return nil
+	}
+	p := int32(v)
+	return &p
+}
 
 type resourceVersionWithTime struct {
 	ResourceVersion string
@@ -164,6 +193,36 @@ func (d *GenericJobReconciler) SetupWithManager(mgr ctrl.Manager, workers int, w
 		// 10 qps, 100 bucket size.  This is only for retry speed and its only the overall factor (not per item)
 		&workqueue.TypedBucketRateLimiter[reconcile.Request]{Limiter: rate.NewLimiter(rate.Limit(wqQPS), 1000)},
 	)}).Complete(d)
+}
+
+func (d *GenericJobReconciler) updateQueueUnitPriority(ctx context.Context, handle JobHandle, object client.Object, qu *v1alpha1.QueueUnit) (updated bool, err error) {
+	expectPC, expectPri := handle.genericJobExtension.Priority(ctx, object)
+	if annPri := priorityFromAnnotation(object); annPri != nil {
+		expectPri = annPri
+	}
+
+	priorityChanged := !priorityEqual(qu.Spec.Priority, expectPri)
+	pcChanged := qu.Spec.PriorityClassName != expectPC
+
+	if !priorityChanged && !pcChanged {
+		return false, nil
+	}
+
+	qu.Spec.PriorityClassName = expectPC
+	qu.Spec.Priority = expectPri
+	err = d.client.Update(ctx, qu)
+	return true, err
+}
+
+// priorityEqual compares two *int32 values for equality, treating nil pointers as equal.
+func priorityEqual(a, b *int32) bool {
+	if a == nil && b == nil {
+		return true
+	}
+	if a == nil || b == nil {
+		return false
+	}
+	return *a == *b
 }
 
 func (d *GenericJobReconciler) updateQueueUnitReplicas(ctx context.Context, handle JobHandle, object client.Object, qu *v1alpha1.QueueUnit) (updated bool, err error) {
@@ -336,6 +395,11 @@ func (d *GenericJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	// queueUnit = queueUnit.DeepCopy()
 	if updated, err := d.updateQueueUnitReplicas(ctx, handle, object, queueUnit); updated || err != nil {
 		return ctrl.Result{Requeue: true}, err
+	}
+	if os.Getenv("PAI_ENV") == "" {
+		if updated, err := d.updateQueueUnitPriority(ctx, handle, object, queueUnit); updated || err != nil {
+			return ctrl.Result{Requeue: true}, err
+		}
 	}
 	log = log.WithValues("queueunit", queueUnit.Name, "queueUnitStatus", queueUnit.Status.Phase, "jobStatus", jobStatus)
 	trace := trace.New("jobReconciling")

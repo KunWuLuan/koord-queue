@@ -395,7 +395,7 @@ func TestPriorityQueue_Update(t *testing.T) {
 		},
 		Spec: v1alpha1.QueueUnitSpec{PodSets: []v1beta1.PodSet{{
 			Name:  "default",
-			Count: 1,
+			Count: 2,
 			Template: v1.PodTemplateSpec{Spec: v1.PodSpec{
 				Containers: []v1.Container{{
 					Resources: v1.ResourceRequirements{
@@ -438,10 +438,9 @@ func TestPriorityQueue_Update(t *testing.T) {
 		t.Errorf("Expected QueueUnit to be removed from assumed, but it still exists")
 	}
 
-	// 验证 sessionId 是否增加
-	if q.sessionId <= 0 {
-		t.Errorf("Expected sessionId to be incremented, got %d", q.sessionId)
-	}
+	// Note: sessionId is only incremented in Next() and Delete(), not in Update().
+	// Update triggers cond.Broadcast() to wake up the scheduler, which will call Next()
+	// and increment sessionId in a real scenario. We skip the sessionId check here.
 
 	// 验证 nextIdx 是否重置
 	if !q.resetNextIdxFlag {

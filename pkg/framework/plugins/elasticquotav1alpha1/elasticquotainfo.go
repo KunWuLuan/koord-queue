@@ -3,6 +3,7 @@ package elasticquotav1alpha1
 import (
 	"errors"
 	"fmt"
+	"reflect"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -26,50 +27,48 @@ type ElasticQuotaInfo struct {
 	SelfGuaranteedUsed     map[v1.ResourceName]int64
 	ChildrenGuaranteedUsed map[v1.ResourceName]int64
 
-	OverSoldUsed         map[v1.ResourceName]int64
-	SelfOverSoldUsed     map[v1.ResourceName]int64
-	ChildrenOverSoldUsed map[v1.ResourceName]int64
-
 	Reserved map[types.UID]*framework.QueueUnitInfo
 }
 
 func NewElasticQuotaInfo(q *v1alpha1.ElasticQuota) *ElasticQuotaInfo {
 	info := &ElasticQuotaInfo{
-		Max:                    make(map[v1.ResourceName]int64, len(q.Spec.Max)),
-		Min:                    make(map[v1.ResourceName]int64, len(q.Spec.Min)),
 		Used:                   make(map[v1.ResourceName]int64),
 		SelfUsed:               make(map[v1.ResourceName]int64),
 		ChildrenUsed:           make(map[v1.ResourceName]int64),
 		GuaranteedUsed:         make(map[v1.ResourceName]int64),
 		SelfGuaranteedUsed:     make(map[v1.ResourceName]int64),
 		ChildrenGuaranteedUsed: make(map[v1.ResourceName]int64),
-		OverSoldUsed:           make(map[v1.ResourceName]int64),
-		SelfOverSoldUsed:       make(map[v1.ResourceName]int64),
-		ChildrenOverSoldUsed:   make(map[v1.ResourceName]int64),
 
 		Quota:    q,
 		Reserved: make(map[types.UID]*framework.QueueUnitInfo),
 	}
 
-	for k, v := range q.Spec.Max {
-		if k == "cpu" {
-			info.Max[k] = v.MilliValue()
-		} else {
-			info.Max[k] = v.Value()
-		}
-	}
-	for k, v := range q.Spec.Min {
-		if k == "cpu" {
-			info.Min[k] = v.MilliValue()
-		} else {
-			info.Min[k] = v.Value()
-		}
-	}
+	info.Max = utils.NewResource(q.Spec.Max).Resources
+	info.Min = utils.NewResource(q.Spec.Min).Resources
 
 	return info
 }
 
 func (info *ElasticQuotaInfo) AddQueueUnit(currentQuota string, queueUnit *framework.QueueUnitInfo) {
+	if _, exist := info.Reserved[queueUnit.Unit.UID]; exist {
+		return
+	}
+
+	info.addQueueUnitInternal(currentQuota, queueUnit)
+
+	res := utils.GetReservedResource(queueUnit.Unit).Resources
+	queueUnitQuota := getQuotaName(queueUnit.Unit)
+
+	klog.Infof("success AddQueueUnit, currentQuotaName:%v, item QueueName:%v, itemName:%v, "+
+		"itemRes:%v, max:%v, min:%v, used:%v, selfUsed:%v, childrenUsed:%v, "+
+		"guaranteedUsed:%v, selfGuaranteedUsed:%v, childrenGuaranteedUsed:%v",
+		currentQuota, queueUnitQuota, queueUnit.Name,
+		res, info.Max, info.Min, info.Used, info.SelfUsed, info.ChildrenUsed, info.GuaranteedUsed,
+		info.SelfGuaranteedUsed, info.ChildrenGuaranteedUsed)
+}
+
+// addQueueUnitInternal adds the queueUnit to Reserved and updates Used counters without logging.
+func (info *ElasticQuotaInfo) addQueueUnitInternal(currentQuota string, queueUnit *framework.QueueUnitInfo) {
 	if _, exist := info.Reserved[queueUnit.Unit.UID]; exist {
 		return
 	}
@@ -87,30 +86,12 @@ func (info *ElasticQuotaInfo) AddQueueUnit(currentQuota string, queueUnit *frame
 		utils.UpdateUsage(info.ChildrenUsed, res, 1)
 	}
 
-	isOversold := utils.IsQueueUnitOversold(queueUnit)
-	if isOversold {
-		utils.UpdateUsage(info.OverSoldUsed, res, 1)
-		if sameQuota {
-			utils.UpdateUsage(info.SelfOverSoldUsed, res, 1)
-		} else {
-			utils.UpdateUsage(info.ChildrenOverSoldUsed, res, 1)
-		}
+	utils.UpdateUsage(info.GuaranteedUsed, res, 1)
+	if sameQuota {
+		utils.UpdateUsage(info.SelfGuaranteedUsed, res, 1)
 	} else {
-		utils.UpdateUsage(info.GuaranteedUsed, res, 1)
-		if sameQuota {
-			utils.UpdateUsage(info.SelfGuaranteedUsed, res, 1)
-		} else {
-			utils.UpdateUsage(info.ChildrenGuaranteedUsed, res, 1)
-		}
+		utils.UpdateUsage(info.ChildrenGuaranteedUsed, res, 1)
 	}
-
-	klog.Infof("success AddQueueUnit, currentQuotaName:%v, item QueueName:%v, itemName:%v, "+
-		"isOversold: %v, itemRes:%v, max:%v, min:%v, used:%v, selfUsed:%v, childrenUsed:%v, "+
-		"guaranteedUsed:%v, selfGuaranteedUsed:%v, childrenGuaranteedUsed:%v, "+
-		"overSoldUsed:%v, selfOverSoldUsed:%v, childrenOverSoldUsed:%v", currentQuota, queueUnitQuota, queueUnit.Name,
-		isOversold, res, info.Max, info.Min, info.Used, info.SelfUsed, info.ChildrenUsed, info.GuaranteedUsed,
-		info.SelfGuaranteedUsed, info.ChildrenGuaranteedUsed, info.OverSoldUsed,
-		info.SelfOverSoldUsed, info.ChildrenOverSoldUsed)
 }
 
 func (info *ElasticQuotaInfo) DeleteQueueUnit(currentQuota string, queueUnit *framework.QueueUnitInfo) {
@@ -119,12 +100,34 @@ func (info *ElasticQuotaInfo) DeleteQueueUnit(currentQuota string, queueUnit *fr
 		return
 	}
 
-	resevedQueueUnit := reserved.Unit
-	delete(info.Reserved, resevedQueueUnit.UID)
-	// Use the same resource source as AddQueueUnit to ensure consistency
-	res := utils.GetReservedResource(resevedQueueUnit).Resources
+	// Capture info for logging before delete
+	reservedUnit := reserved.Unit
+	res := utils.GetReservedResource(reservedUnit).Resources
+	queueUnitQuota := getQuotaName(reservedUnit)
 
-	queueUnitQuota := getQuotaName(resevedQueueUnit)
+	info.deleteQueueUnitInternal(currentQuota, queueUnit)
+
+	klog.Infof("success DeleteQueueUnit, currentQuotaName:%v, item QueueName:%v, itemName:%v, "+
+		"itemRes:%v, max:%v, min:%v, used:%v, selfUsed:%v, childrenUsed:%v, "+
+		"guaranteedUsed:%v, selfGuaranteedUsed:%v, childrenGuaranteedUsed:%v",
+		currentQuota, queueUnitQuota, reservedUnit.Name,
+		res, info.Max, info.Min, info.Used, info.SelfUsed, info.ChildrenUsed, info.GuaranteedUsed,
+		info.SelfGuaranteedUsed, info.ChildrenGuaranteedUsed)
+}
+
+// deleteQueueUnitInternal removes the queueUnit from Reserved and updates Used counters without logging.
+// It uses the stored reserved object (not the passed queueUnit) to compute the release amount.
+func (info *ElasticQuotaInfo) deleteQueueUnitInternal(currentQuota string, queueUnit *framework.QueueUnitInfo) {
+	reserved, exist := info.Reserved[queueUnit.Unit.UID]
+	if reserved == nil || !exist {
+		return
+	}
+
+	reservedUnit := reserved.Unit
+	delete(info.Reserved, reservedUnit.UID)
+	res := utils.GetReservedResource(reservedUnit).Resources
+
+	queueUnitQuota := getQuotaName(reservedUnit)
 	sameQuota := queueUnitQuota == currentQuota
 
 	utils.UpdateUsage(info.Used, res, -1)
@@ -134,44 +137,56 @@ func (info *ElasticQuotaInfo) DeleteQueueUnit(currentQuota string, queueUnit *fr
 		utils.UpdateUsage(info.ChildrenUsed, res, -1)
 	}
 
-	isOversold := utils.IsQueueUnitOversold(reserved)
-	if isOversold {
-		utils.UpdateUsage(info.OverSoldUsed, res, -1)
-		if sameQuota {
-			utils.UpdateUsage(info.SelfOverSoldUsed, res, -1)
-		} else {
-			utils.UpdateUsage(info.ChildrenOverSoldUsed, res, -1)
-		}
+	utils.UpdateUsage(info.GuaranteedUsed, res, -1)
+	if sameQuota {
+		utils.UpdateUsage(info.SelfGuaranteedUsed, res, -1)
 	} else {
-		utils.UpdateUsage(info.GuaranteedUsed, res, -1)
-		if sameQuota {
-			utils.UpdateUsage(info.SelfGuaranteedUsed, res, -1)
-		} else {
-			utils.UpdateUsage(info.ChildrenGuaranteedUsed, res, -1)
-		}
+		utils.UpdateUsage(info.ChildrenGuaranteedUsed, res, -1)
+	}
+}
+
+// ResizeQueueUnit updates the reserved queueUnit in-place. If the resource amount is unchanged,
+// it silently replaces the stored object. If it differs, it adjusts the Used counters and logs
+// a single line with the before/after resource amounts.
+func (info *ElasticQuotaInfo) ResizeQueueUnit(currentQuota string, newQueueUnit *framework.QueueUnitInfo) {
+	reserved, exist := info.Reserved[newQueueUnit.Unit.UID]
+	if reserved == nil || !exist {
+		return
 	}
 
-	klog.Infof("success DeleteQueueUnit, currentQuotaName:%v, item QueueName:%v, itemName:%v, "+
-		"isOversold: %v, itemRes:%v, max:%v, min:%v, used:%v, selfUsed:%v, childrenUsed:%v, "+
-		"guaranteedUsed:%v, selfGuaranteedUsed:%v, childrenGuaranteedUsed:%v, "+
-		"overSoldUsed:%v, selfOverSoldUsed:%v, childrenOverSoldUsed:%v", currentQuota, queueUnitQuota, resevedQueueUnit.Name,
-		isOversold, res, info.Max, info.Min, info.Used, info.SelfUsed, info.ChildrenUsed, info.GuaranteedUsed,
-		info.SelfGuaranteedUsed, info.ChildrenGuaranteedUsed, info.OverSoldUsed,
-		info.SelfOverSoldUsed, info.ChildrenOverSoldUsed)
+	oldRes := utils.GetReservedResource(reserved.Unit).Resources
+	newRes := utils.GetReservedResource(newQueueUnit.Unit).Resources
+
+	// If resource amount is the same, just swap the stored object silently
+	if reflect.DeepEqual(oldRes, newRes) {
+		info.Reserved[newQueueUnit.Unit.UID] = newQueueUnit
+		return
+	}
+
+	// Resource amount changed: delete old, add new, log once
+	info.deleteQueueUnitInternal(currentQuota, newQueueUnit)
+	info.addQueueUnitInternal(currentQuota, newQueueUnit)
+
+	klog.Infof("success ResizeQueueUnit, currentQuotaName:%v, itemName:%v, "+
+		"oldRes:%v, newRes:%v, max:%v, min:%v, used:%v, selfUsed:%v, childrenUsed:%v, "+
+		"guaranteedUsed:%v, selfGuaranteedUsed:%v, childrenGuaranteedUsed:%v",
+		currentQuota, newQueueUnit.Name,
+		oldRes, newRes, info.Max, info.Min, info.Used, info.SelfUsed, info.ChildrenUsed, info.GuaranteedUsed,
+		info.SelfGuaranteedUsed, info.ChildrenGuaranteedUsed)
 }
 
 func (info *ElasticQuotaInfo) CheckUsage(currentQuota string,
 	queueUnit *framework.QueueUnitInfo, oversellRate float64) error {
-	queueUnitRes := utils.TransResourceList(queueUnit.Unit.Spec.Resource)
+	queueUnitRes := utils.NewResource(queueUnit.Unit.Spec.Resource).Resources
 	queueUnitQuota := getQuotaName(queueUnit.Unit)
 
-	var limit = info.Max
-	var used = info.Used
+	limit := info.Max
+	used := info.Used
 
 	if len(limit) == 0 && len(queueUnitRes) != 0 {
 		klog.Infof("limit is empty, itemName:%v, queueUnitQuota:%v, currentQuota:%v, "+
-			"queueUnitRes:%v, limit:%v", queueUnit.Name, queueUnitQuota,
-			currentQuota, queueUnitRes, limit)
+			"queueUnitRes:%v, max:%v", queueUnit.Name, queueUnitQuota,
+			currentQuota, queueUnitRes, info.Max)
 
 		return fmt.Errorf("limited quotaName:%v, quota spec is empty but queue unit res is not empty", currentQuota)
 	}
@@ -179,12 +194,11 @@ func (info *ElasticQuotaInfo) CheckUsage(currentQuota string,
 	valid, resKey := checkResource(limit, used, queueUnitRes, oversellRate)
 	if !valid {
 		klog.Infof("res not enough, itemName:%v, queueUnitQuota:%v, currentQuota:%v, "+
-			"oversellRate:%v,  resKey:%v, queueUnitRes:%v, limit:%v, used:%v", queueUnit.Name,
-			queueUnitQuota, currentQuota, oversellRate, resKey, queueUnitRes, limit, used)
+			"oversellRate:%v,  resKey:%v, queueUnitRes:%v, max:%v, used:%v", queueUnit.Name,
+			queueUnitQuota, currentQuota, oversellRate, resKey, queueUnitRes, info.Max, info.Used)
 
 		errMsg := fmt.Sprintf("limited quotaName:%v, limited resKey:%v,", currentQuota, resKey)
-		err := errors.New(errMsg)
-		return err
+		return errors.New(errMsg)
 	}
 
 	return nil

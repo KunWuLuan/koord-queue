@@ -18,6 +18,7 @@ package multischedulingqueue
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 	"sort"
 	"strconv"
@@ -28,7 +29,9 @@ import (
 	externalv1alpha1 "github.com/koordinator-sh/koord-queue/pkg/client/listers/scheduling/v1alpha1"
 	"gopkg.in/yaml.v2"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
 
 	"github.com/koordinator-sh/koord-queue/pkg/framework"
@@ -53,6 +56,10 @@ type MultiSchedulingQueue struct {
 	podMaxBackoffSeconds     int
 	enableStrictConsistency  bool
 	started                  bool
+	recorder                 record.EventRecorder
+	// queueUnitNotFoundNotified tracks QueueUnits that have already had a QueueNotFound event fired,
+	// to avoid repeating the event every 10 seconds in the periodic flush.
+	queueUnitNotFoundNotified sets.Set[string]
 
 	queueChan *sync.Cond
 }
@@ -100,19 +107,21 @@ func (mq *MultiSchedulingQueue) DeleteQueueUnit(qu *v1alpha1.QueueUnit) {
 	delete(mq.queueUnitToQueue, qu.Namespace+"/"+qu.Name)
 }
 
-func NewMultiSchedulingQueue(fw framework.MultiQueueHandle, podInitialBackoffSeconds int, podMaxBackoffSeconds int, queueUnitLister externalv1alpha1.QueueUnitLister, enableStrictConsistency bool) (queue.MultiSchedulingQueue, error) {
+func NewMultiSchedulingQueue(fw framework.MultiQueueHandle, podInitialBackoffSeconds int, podMaxBackoffSeconds int, queueUnitLister externalv1alpha1.QueueUnitLister, enableStrictConsistency bool, recorder record.EventRecorder) (queue.MultiSchedulingQueue, error) {
 	mq := &MultiSchedulingQueue{
-		fw:                       fw,
-		queueMap:                 make(map[string]*queue.Queue),
-		queueUnitToQueue:         make(map[string]string),
-		queueUnitFindNoQueue:     []*framework.QueueUnitInfo{},
-		lessFunc:                 fw.MultiQueueSortFunc(),
-		groupFunc:                fw.QueueUnitMappingFunc(),
-		podInitialBackoffSeconds: podInitialBackoffSeconds,
-		podMaxBackoffSeconds:     podMaxBackoffSeconds,
-		queueUnitLister:          queueUnitLister,
-		enableStrictConsistency:  enableStrictConsistency,
-		queueChan:                sync.NewCond(&sync.Mutex{}),
+		fw:                        fw,
+		queueMap:                  make(map[string]*queue.Queue),
+		queueUnitToQueue:          make(map[string]string),
+		queueUnitFindNoQueue:      []*framework.QueueUnitInfo{},
+		lessFunc:                  fw.MultiQueueSortFunc(),
+		groupFunc:                 fw.QueueUnitMappingFunc(),
+		podInitialBackoffSeconds:  podInitialBackoffSeconds,
+		podMaxBackoffSeconds:      podMaxBackoffSeconds,
+		queueUnitLister:           queueUnitLister,
+		enableStrictConsistency:   enableStrictConsistency,
+		recorder:                  recorder,
+		queueUnitNotFoundNotified: sets.New[string](),
+		queueChan:                 sync.NewCond(&sync.Mutex{}),
 	}
 
 	return mq, nil
@@ -169,20 +178,27 @@ func (mq *MultiSchedulingQueue) flushUnitsFindNoQueue() {
 		qu.Unit = newQu
 		qname, err := mq.GetQueueNameByQueueUnit(newQu)
 		if err != nil {
-			klog.Infof("qu %v not available: %v", qu.Name, err.Error())
+			klog.V(5).Infof("qu %v not available: %v", qu.Name, err.Error())
 			continue
 		}
 		if qname == "" {
-			klog.Infof("qu %v doesn't belong to any queue", qu.Name)
+			klog.V(5).Infof("qu %v doesn't belong to any queue", qu.Name)
 			newUnitsList = append(newUnitsList, qu)
 			continue
 		}
 		queue, ok := mq.queueMap[qname]
 		if !ok {
-			klog.Infof("queue %v not found for qu %v", qname, qu.Name)
+			if !mq.queueUnitNotFoundNotified.Has(qu.Name) {
+				klog.Infof("queue %v not found for qu %v", qname, qu.Name)
+				if mq.recorder != nil {
+					mq.recorder.Event(qu.Unit, "Warning", "QueueNotFound", fmt.Sprintf("queue %s not found for queueUnit %s", qname, qu.Name))
+				}
+				mq.queueUnitNotFoundNotified.Insert(qu.Name)
+			}
 			newUnitsList = append(newUnitsList, qu)
 		} else {
 			klog.Infof("add qu %v to queue %v", qu.Name, qname)
+			mq.queueUnitNotFoundNotified.Delete(qu.Name)
 			mq.queueUnitToQueue[qu.Unit.Namespace+"/"+qu.Unit.Name] = qname
 			queue.AddQueueUnitInfo(qu)
 		}

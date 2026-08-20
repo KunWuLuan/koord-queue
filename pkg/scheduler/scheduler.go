@@ -399,9 +399,6 @@ func (s *Scheduler) Dequeue(schedulingCycleCtx context.Context, logger logr.Logg
 	newStatus.LastAllocateTime = &metav1.Time{Time: timeNow}
 
 	annotations := make(map[string]string)
-	if actualQuotaOversoldType := queueUnit.Annotations[utils.AnnotationActualQuotaOversoldType]; actualQuotaOversoldType != "" {
-		annotations[utils.AnnotationActualQuotaOversoldType] = actualQuotaOversoldType
-	}
 	// annotations[api.DequeueFailReasonAnnotation] = ""
 
 	updatedUnit, err := utils.UpdateQueueUnitStatusAndAnnotations(queueUnit.Name, queueUnit.Namespace, qImpl.Name(), newStatus, s.QueueClient, annotations)

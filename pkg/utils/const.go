@@ -25,16 +25,9 @@ const (
 	AnnotationParentQuotaName = "koord-queue/parent-quota-fullname"
 	AnnotationQuotaFullName   = "koord-queue/quota-fullname"
 
-	AnnotationQuotaOversoldType = "quota.scheduling.koordinator.sh/quota-oversold-type"
-	// AnnotationActualQuotaOversoldType for QuotaOversoldTypeAccept queue unit, the value of
-	// AnnotationActualQuotaOversoldType depends on the filter plugin.
-	AnnotationActualQuotaOversoldType = "quota.scheduling.koordinator.sh/actual-quota-oversold-type"
-	QuotaOversoldTypeForbidden        = "ForbiddenQuotaOverSold"
-	QuotaOversoldTypeAccept           = "AcceptQuotaOverSold"
-	QuotaOversoldTypeForce            = "ForceQuotaOverSold"
-	CheckSelfQuotaFailed              = "CheckSelfQuotaFailed"
-	CheckParentQuotaFailed            = "CheckParentQuotaFailed"
-	QueueSuspend                      = "queue-suspend"
+	CheckSelfQuotaFailed   = "CheckSelfQuotaFailed"
+	CheckParentQuotaFailed = "CheckParentQuotaFailed"
+	QueueSuspend           = "queue-suspend"
 
 	QueueGuaranteedUsed         = "alibabacloud.com/queue-guaranteed-used"
 	QueueSelfGuaranteedUsed     = "alibabacloud.com/queue-self-guaranteed-used"

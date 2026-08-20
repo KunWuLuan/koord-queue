@@ -2,6 +2,7 @@ package elasticquotav1alpha1
 
 import (
 	"context"
+	"strings"
 
 	queuev1alpha1 "github.com/koordinator-sh/koord-queue/pkg/apis/scheduling/v1alpha1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -14,6 +15,13 @@ import (
 	"github.com/koordinator-sh/koord-queue/pkg/queue/queuepolicies"
 	"github.com/koordinator-sh/koord-queue/pkg/utils"
 )
+
+// shouldSyncAnnotation returns true if the annotation key should be synced from
+// ElasticQuota to Queue. koord-queue/queue-policy is excluded because it is already
+// handled via spec.queuePolicy by findMatchedSupportPolicy.
+func shouldSyncAnnotation(key string) bool {
+	return strings.HasPrefix(key, "koord-queue/") && key != queuepolicies.QueuePolicyLabelKey
+}
 
 const (
 	KoordQueueNamespace = "koord-queue"
@@ -132,6 +140,12 @@ func makeNewestQueueCr(existQueue *queuev1alpha1.Queue, elasticQuota *v1alpha1.E
 		newQueue.Annotations = make(map[string]string)
 		if elasticQuota.Annotations != nil {
 			newQueue.Annotations[utils.QuotaKoordQueueEnable] = elasticQuota.Annotations[utils.QuotaKoordQueueEnable]
+			// Sync all koord-queue/ prefixed annotations from ElasticQuota to Queue
+			for k, v := range elasticQuota.Annotations {
+				if shouldSyncAnnotation(k) {
+					newQueue.Annotations[k] = v
+				}
+			}
 		}
 
 		newQueue.Labels = make(map[string]string)
@@ -147,15 +161,20 @@ func makeNewestQueueCr(existQueue *queuev1alpha1.Queue, elasticQuota *v1alpha1.E
 			newPolicy = "Priority"
 
 			klog.Infof("failed to parse supported queue policy, init as default Priority, "+
-				"queueName:%v, label:%v, default:%v", elasticQuota.Name, elasticQuota.Labels[queuepolicies.QueuePolicyLabelKey],
+				"queueName:%v, label:%v, default:%v", elasticQuota.Name, queuepolicies.GetQueuePolicyFromLabels(elasticQuota.Labels),
 				"Priority")
 		}
 		newQueue.Spec.QueuePolicy = queuev1alpha1.QueuePolicy(newPolicy)
 
 		return newQueue, true
 	} else {
+		desiredPolicy := findMatchedSupportPolicy(elasticQuota)
+		if desiredPolicy == "" {
+			desiredPolicy = "Priority"
+		}
+
 		needUpdate := false
-		if existQueue.Spec.QueuePolicy != queuev1alpha1.QueuePolicy(elasticQuota.Labels[queuepolicies.QueuePolicyLabelKey]) {
+		if existQueue.Spec.QueuePolicy != queuev1alpha1.QueuePolicy(desiredPolicy) {
 			needUpdate = true
 		}
 
@@ -164,19 +183,33 @@ func makeNewestQueueCr(existQueue *queuev1alpha1.Queue, elasticQuota *v1alpha1.E
 			needUpdate = true
 		}
 
+		// Check if any kube-queue/ prefixed annotations need syncing
+		if elasticQuota.Annotations != nil {
+			for k, v := range elasticQuota.Annotations {
+				if shouldSyncAnnotation(k) && existQueue.Annotations[k] != v {
+					needUpdate = true
+					break
+				}
+			}
+		}
+
 		if needUpdate {
 			newQueue := existQueue.DeepCopy()
 
-			newPolicy := findMatchedSupportPolicy(elasticQuota)
-			if newPolicy == "" {
-				newPolicy = "Priority"
-			}
-			newQueue.Spec.QueuePolicy = queuev1alpha1.QueuePolicy(newPolicy)
+			newQueue.Spec.QueuePolicy = queuev1alpha1.QueuePolicy(desiredPolicy)
 
 			if newQueue.Annotations == nil {
 				newQueue.Annotations = make(map[string]string)
 			}
 			newQueue.Annotations[utils.QuotaKoordQueueEnable] = elasticQuota.Annotations[utils.QuotaKoordQueueEnable]
+			// Sync all koord-queue/ prefixed annotations from ElasticQuota to Queue
+			if elasticQuota.Annotations != nil {
+				for k, v := range elasticQuota.Annotations {
+					if shouldSyncAnnotation(k) {
+						newQueue.Annotations[k] = v
+					}
+				}
+			}
 
 			if newQueue.Labels == nil {
 				newQueue.Labels = make(map[string]string)
@@ -202,8 +235,9 @@ var allSupportedPolicies = []string{
 
 func findMatchedSupportPolicy(elasticQuota *v1alpha1.ElasticQuota) string {
 	newPolicy := ""
-	if elasticQuota.Labels != nil && elasticQuota.Labels[queuepolicies.QueuePolicyLabelKey] != "" {
-		requestedPolicy := elasticQuota.Labels[queuepolicies.QueuePolicyLabelKey]
+	// Accept the policy from either the kube-queue or the koord-queue queue-policy label.
+	requestedPolicy := queuepolicies.GetQueuePolicyFromLabels(elasticQuota.Labels)
+	if requestedPolicy != "" {
 		for _, supportPolicy := range allSupportedPolicies {
 			if supportPolicy == requestedPolicy {
 				newPolicy = supportPolicy

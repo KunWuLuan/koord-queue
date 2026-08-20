@@ -184,6 +184,11 @@ func (q *PriorityQueue) findNextQueueUnit() (int32, *framework.QueueUnitInfo) {
 			return q.nextIdx, nil
 		}
 		qu = q.queue[q.nextIdx]
+		key := qu.Unit.Namespace + "/" + qu.Unit.Name
+		if _, updating := q.updating[key]; updating {
+			q.nextIdx++
+			continue
+		}
 		if utils.IsQueueUnitSatisfied(qu.Unit) {
 			q.nextIdx++
 			continue
@@ -542,6 +547,7 @@ func (q *PriorityQueue) Update(old, new *v1alpha1.QueueUnit) error {
 		if found {
 			q.queue = slices.Delete(q.queue, idx, idx+1)
 		}
+		delete(q.updating, key)
 		return nil
 	}
 	// add queueUnit to queue if not present
@@ -561,6 +567,15 @@ func (q *PriorityQueue) Update(old, new *v1alpha1.QueueUnit) error {
 	if !utils.IsQueueUnitReservedAnyResource(new) {
 		klog.V(2).InfoS("delete qu from assumed", "queue", q.name, "qu", klog.KObj(new), "reason", "not reserved")
 		delete(q.assumed, key)
+		if !utils.IsQueueUnitSatisfied(new) {
+			// The job-extension has reclaimed resources (Replicas reduced below expected).
+			// Clear updating so findNextQueueUnit can re-schedule this unit.
+			klog.V(2).InfoS("clear updating after reclaim", "queue", q.name, "qu", klog.KObj(new))
+			delete(q.updating, key)
+			if recorder := q.fw.EventRecorder(); recorder != nil {
+				recorder.Event(new, "Normal", "Reclaimed", fmt.Sprintf("resources reclaimed, queueUnit %s is ready for re-scheduling", new.Name))
+			}
+		}
 	} else if !updating && utils.IsQueueUnitAllRunning(new) {
 		klog.V(2).InfoS("delete qu from assumed", "queue", q.name, "qu", klog.KObj(new), "reason", "all running")
 		q.resetNextIdxFlag = true
@@ -805,5 +820,7 @@ func (q *PriorityQueue) Complete(*apiv1alpha1.QueueUnit) {
 }
 
 func (q *PriorityQueue) DequeueSuccess(qu *v1alpha1.QueueUnit) {
-	delete(q.updating, qu.Namespace+"/"+qu.Name)
+	// Do not clear updating here. The updating flag is cleared in Update()
+	// when IsQueueUnitDequeued returns true (all pods running). Keeping updating
+	// prevents findNextQueueUnit from re-scheduling this unit before its pods are running.
 }

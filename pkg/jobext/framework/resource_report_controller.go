@@ -154,40 +154,48 @@ func (d *ResourceReporter) syncInFlightWorkers(ctx context.Context, log logr.Log
 	running := 0
 	pd2Res := map[string]corev1.ResourceList{}
 	for _, pod := range pods {
-				// 	return ctrl.Result{RequeueAfter: DefaultRequeuePeriod}, nil
+		// 	return ctrl.Result{RequeueAfter: DefaultRequeuePeriod}, nil
 		// }
 		res := util.GetPodRequestsAndLimits(&pod.Spec)
 		pd2Res[pod.Namespace+"/"+pod.Name] = res
 		util.AddResourceList(total, res)
+		// A pod is counted as running once it has been scheduled (NodeName set),
+		// even if it has not entered the Running phase yet (e.g. pulling image).
+		// This way wait-for-pods-running queues are not blocked by image pull failures.
 		if pod.Spec.NodeName == "" {
 			pending++
-		} else if pod.Spec.NodeName != "" {
+		} else {
 			running++
 		}
 	}
 
-	if len(total) == len(qu.Spec.Resource) {
-		needUpdate := false
-		for k, v := range total {
-			if vv, ok := qu.Spec.Resource[k]; !ok || !vv.Equal(v) {
-				needUpdate = true
-				break
+	// Only sync qu.Spec.Resource from actual pods when the QueueUnit is Running.
+	// During Dequeued, pods may not have been created yet; syncing here would
+	// incorrectly clear the requested resources.
+	if qu.Status.Phase == v1alpha1.Running {
+		if len(total) == len(qu.Spec.Resource) {
+			needUpdate := false
+			for k, v := range total {
+				if vv, ok := qu.Spec.Resource[k]; !ok || !vv.Equal(v) {
+					needUpdate = true
+					break
+				}
 			}
-		}
-		if needUpdate {
+			if needUpdate {
+				log.V(1).Info("update resources in queueunit", "before", qu.Spec.Resource, "after", total)
+				qu.Spec.Resource = total
+				return ctrl.Result{}, d.client.Update(ctx, qu)
+			}
+		} else {
 			log.V(1).Info("update resources in queueunit", "before", qu.Spec.Resource, "after", total)
 			qu.Spec.Resource = total
 			return ctrl.Result{}, d.client.Update(ctx, qu)
 		}
-	} else {
-		log.V(1).Info("update resources in queueunit", "before", qu.Spec.Resource, "after", total)
-		qu.Spec.Resource = total
-		return ctrl.Result{}, d.client.Update(ctx, qu)
 	}
 	runningByPs := map[string]int64{}
 	resByPs := map[string]corev1.ResourceList{}
 	for ps, pss := range podsByPs {
-				// 	return ctrl.Result{RequeueAfter: DefaultRequeuePeriod}, nil
+		// 	return ctrl.Result{RequeueAfter: DefaultRequeuePeriod}, nil
 		// }
 		// log.V(3).Info("sync podset", "podset", ps, "podcount", len(pss))
 		runningByPs[ps] = 0
@@ -211,6 +219,11 @@ func (d *ResourceReporter) syncInFlightWorkers(ctx context.Context, log logr.Log
 		Running: running,
 	}
 	updated := false
+	// Only sync Admission.Resources from actual pod requests when the QueueUnit
+	// is Running. During Dequeued, keep quota accounting purely admission-based
+	// (Spec.PodSets template x Replicas) so that used is never affected by
+	// actual pods before the job really runs.
+	syncRes := qu.Status.Phase == v1alpha1.Running
 	for k, r := range runningByPs {
 		found := false
 		for i, podset := range qu.Status.Admissions {
@@ -223,7 +236,7 @@ func (d *ResourceReporter) syncInFlightWorkers(ctx context.Context, log logr.Log
 					qu.Status.Admissions[i].Replicas = r
 					updated = true
 				}
-				if !util.Equal(qu.Status.Admissions[i].Resources, resByPs[k]) {
+				if syncRes && !util.Equal(qu.Status.Admissions[i].Resources, resByPs[k]) {
 					updated = true
 					qu.Status.Admissions[i].Resources = resByPs[k]
 				}
@@ -232,12 +245,15 @@ func (d *ResourceReporter) syncInFlightWorkers(ctx context.Context, log logr.Log
 			}
 		}
 		if !found {
-			qu.Status.Admissions = append(qu.Status.Admissions, v1alpha1.Admission{
-				Name:      k,
-				Running:   r,
-				Replicas:  r,
-				Resources: resByPs[k],
-			})
+			ad := v1alpha1.Admission{
+				Name:     k,
+				Running:  r,
+				Replicas: r,
+			}
+			if syncRes {
+				ad.Resources = resByPs[k]
+			}
+			qu.Status.Admissions = append(qu.Status.Admissions, ad)
 			updated = true
 		}
 	}
@@ -334,11 +350,15 @@ func (d *ResourceReporter) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	}
 
 	jobStatus, _ := handle.genericJobExtension.GetJobStatus(ctx, object, d.client)
-	if jobStatus != Running {
+	if jobStatus != Running && jobStatus != Pending {
 		return ctrl.Result{}, nil
 	}
 
-	if queueUnit.Status.Phase != v1alpha1.Running {
+	// Also run when the QueueUnit is Dequeued: Admissions.Running counts scheduled
+	// pods (NodeName set), so wait-for-pods-running queues can be released as soon
+	// as pods are scheduled, without waiting for them to reach the Running phase
+	// (e.g. blocked by image pull failures).
+	if queueUnit.Status.Phase != v1alpha1.Running && queueUnit.Status.Phase != v1alpha1.Dequeued {
 		return ctrl.Result{}, nil
 	}
 

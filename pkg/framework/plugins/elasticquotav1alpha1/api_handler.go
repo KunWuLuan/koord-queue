@@ -5,19 +5,16 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/koordinator-sh/koord-queue/pkg/utils"
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 type ElasticQuotaUnitDebugInfo struct {
-	Name               string
-	Resource           corev1.ResourceList
-	Priority           int32
-	OversoldType       string
-	ActualOversoldType string
-	CreationTimestamp  v1.Time
-	InReserveCache     bool
+	Name              string
+	Resource          corev1.ResourceList
+	Priority          int32
+	CreationTimestamp v1.Time
+	InReserveCache    bool
 }
 
 type ElasticQuotaDebugInfo struct {
@@ -32,10 +29,6 @@ type ElasticQuotaDebugInfo struct {
 	GuaranteedUsed         map[corev1.ResourceName]int64
 	SelfGuaranteedUsed     map[corev1.ResourceName]int64
 	ChildrenGuaranteedUsed map[corev1.ResourceName]int64
-
-	OverSoldUsed         map[corev1.ResourceName]int64
-	SelfOverSoldUsed     map[corev1.ResourceName]int64
-	ChildrenOverSoldUsed map[corev1.ResourceName]int64
 
 	Items map[string]*ElasticQuotaUnitDebugInfo
 }
@@ -75,9 +68,6 @@ func (eq *ElasticQuota) GetDebugInfoInternal(verbose bool) map[string]*ElasticQu
 			GuaranteedUsed:         queueInfo.GuaranteedUsed,
 			SelfGuaranteedUsed:     queueInfo.SelfGuaranteedUsed,
 			ChildrenGuaranteedUsed: queueInfo.ChildrenGuaranteedUsed,
-			OverSoldUsed:           queueInfo.OverSoldUsed,
-			SelfOverSoldUsed:       queueInfo.SelfOverSoldUsed,
-			ChildrenOverSoldUsed:   queueInfo.ChildrenOverSoldUsed,
 			Items:                  make(map[string]*ElasticQuotaUnitDebugInfo),
 		}
 
@@ -86,13 +76,10 @@ func (eq *ElasticQuota) GetDebugInfoInternal(verbose bool) map[string]*ElasticQu
 		}
 
 		for _, quInfo := range queueInfo.Reserved {
-			oversoldType, actualOversoldType := utils.GetQueueUnitOversoldAnnotations(quInfo.Unit.Annotations)
 			itemDebugInfo := &ElasticQuotaUnitDebugInfo{
-				Name:               quInfo.Unit.Name,
-				Resource:           quInfo.Unit.Spec.Resource.DeepCopy(),
-				OversoldType:       oversoldType,
-				ActualOversoldType: actualOversoldType,
-				CreationTimestamp:  quInfo.Unit.CreationTimestamp,
+				Name:              quInfo.Unit.Name,
+				Resource:          quInfo.Unit.Spec.Resource.DeepCopy(),
+				CreationTimestamp: quInfo.Unit.CreationTimestamp,
 			}
 			if quInfo.Unit.Spec.Priority != nil {
 				itemDebugInfo.Priority = *quInfo.Unit.Spec.Priority

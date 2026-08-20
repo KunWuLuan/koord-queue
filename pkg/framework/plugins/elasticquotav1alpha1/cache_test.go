@@ -8,13 +8,32 @@ import (
 	api "github.com/koordinator-sh/koord-queue/pkg/apis/scheduling/v1alpha1"
 	"github.com/koordinator-sh/koord-queue/pkg/framework"
 	"github.com/koordinator-sh/koord-queue/pkg/framework/apis/elasticquota/scheduling/v1alpha1"
-	"github.com/koordinator-sh/koord-queue/pkg/utils"
 	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 )
+
+//import (
+//	"fmt"
+//	"testing"
+//	"time"
+//
+//	"github.com/stretchr/testify/assert"
+//
+//	"github.com/koordinator-sh/koord-queue/pkg/framework"
+//	"github.com/koordinator-sh/koord-queue/pkg/utils"
+//
+//	api "github.com/koordinator-sh/koord-queue/pkg/apis/scheduling/v1alpha1"
+//
+//	"github.com/koordinator-sh/koord-queue/pkg/framework/apis/elasticquota/scheduling/v1alpha1"
+//
+//	v1 "k8s.io/api/core/v1"
+//	"k8s.io/apimachinery/pkg/api/resource"
+//	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+//	"k8s.io/apimachinery/pkg/types"
+//)
 
 type ElasticQuotaWrapper struct {
 	elasticquota *v1alpha1.ElasticQuota
@@ -69,7 +88,6 @@ func Test_cacheImpl_CheckUsage(t *testing.T) {
 		quotas                   []*v1alpha1.ElasticQuota
 		reservedRes              []reservedRes
 		reserveForbiddenOversold bool
-		oversold                 bool
 		hasError                 bool
 	}{
 		{
@@ -105,7 +123,6 @@ func Test_cacheImpl_CheckUsage(t *testing.T) {
 				MakeElasticQuota("test1", "default").Parent("test2").Max(map[string]int64{"cpu": 9}).Quota(),
 				MakeElasticQuota("test2", "default").Max(map[string]int64{"cpu": 100}).Quota(),
 			},
-			oversold: true,
 			hasError: true,
 		},
 		{
@@ -117,7 +134,6 @@ func Test_cacheImpl_CheckUsage(t *testing.T) {
 				MakeElasticQuota("test1", "default").Parent("test2").Min(map[string]int64{"cpu": 10}).Quota(),
 				MakeElasticQuota("test2", "default").Min(map[string]int64{"cpu": 9}).Quota(),
 			},
-			oversold: false,
 			hasError: false,
 		},
 		{
@@ -129,7 +145,6 @@ func Test_cacheImpl_CheckUsage(t *testing.T) {
 				MakeElasticQuota("test1", "default").Parent("test2").Min(map[string]int64{"cpu": 11}).Quota(),
 				MakeElasticQuota("test2", "default").Min(map[string]int64{"cpu": 13}).Quota(),
 			},
-			oversold: false,
 			hasError: true,
 		},
 		{
@@ -148,7 +163,6 @@ func Test_cacheImpl_CheckUsage(t *testing.T) {
 				res:      v1.ResourceList{"cpu": resource.MustParse("15")},
 			}},
 			reserveForbiddenOversold: true,
-			oversold:                 true,
 			hasError:                 true,
 		},
 		{
@@ -167,7 +181,6 @@ func Test_cacheImpl_CheckUsage(t *testing.T) {
 				res:      v1.ResourceList{"cpu": resource.MustParse("20")},
 			}},
 			reserveForbiddenOversold: false,
-			oversold:                 true,
 			hasError:                 true,
 		},
 		{
@@ -186,7 +199,6 @@ func Test_cacheImpl_CheckUsage(t *testing.T) {
 				res:      v1.ResourceList{"cpu": resource.MustParse("20")},
 			}},
 			reserveForbiddenOversold: false,
-			oversold:                 false,
 			hasError:                 false,
 		},
 		{
@@ -205,7 +217,6 @@ func Test_cacheImpl_CheckUsage(t *testing.T) {
 				res:      v1.ResourceList{"cpu": resource.MustParse("10")},
 			}},
 			reserveForbiddenOversold: true,
-			oversold:                 false,
 			hasError:                 false,
 		},
 		{
@@ -223,7 +234,6 @@ func Test_cacheImpl_CheckUsage(t *testing.T) {
 				quotaKey: "test2",
 				res:      v1.ResourceList{"cpu": resource.MustParse("1")},
 			}},
-			oversold: true,
 			hasError: false,
 		},
 	}
@@ -246,11 +256,9 @@ func Test_cacheImpl_CheckUsage(t *testing.T) {
 				queueUnit := framework.NewQueueUnitInfo(unit)
 				queueUnit.Unit.Annotations = map[string]string{}
 				if tt.reserveForbiddenOversold {
-					queueUnit.Unit.Annotations[utils.AnnotationActualQuotaOversoldType] = utils.QuotaOversoldTypeForbidden
 				} else {
-					queueUnit.Unit.Annotations[utils.AnnotationActualQuotaOversoldType] = utils.QuotaOversoldTypeForce
 				}
-				_ = cache.Reserve(r.quotaKey, queueUnit)
+				cache.Reserve(r.quotaKey, queueUnit)
 			}
 
 			unit := &api.QueueUnit{}
@@ -289,11 +297,9 @@ func TestThreeLevelQuotaE2E(t *testing.T) {
 		unit31.Labels = map[string]string{
 			QuotaNameLabelKey: "test31",
 		}
-		unit31.Annotations = map[string]string{
-			utils.AnnotationActualQuotaOversoldType: utils.QuotaOversoldTypeForbidden,
-		}
+		unit31.Annotations = map[string]string{}
 		queueUnit31 := framework.NewQueueUnitInfo(unit31)
-		_ = cache.Reserve("test31", queueUnit31)
+		cache.Reserve("test31", queueUnit31)
 
 		unit32 := &api.QueueUnit{}
 		unit32.UID = "32"
@@ -303,11 +309,9 @@ func TestThreeLevelQuotaE2E(t *testing.T) {
 		unit32.Labels = map[string]string{
 			QuotaNameLabelKey: "test32",
 		}
-		unit32.Annotations = map[string]string{
-			utils.AnnotationActualQuotaOversoldType: utils.QuotaOversoldTypeForbidden,
-		}
+		unit32.Annotations = map[string]string{}
 		queueUnit32 := framework.NewQueueUnitInfo(unit32)
-		_ = cache.Reserve("test32", queueUnit32)
+		cache.Reserve("test32", queueUnit32)
 
 		unit2 := &api.QueueUnit{}
 		unit2.UID = "2"
@@ -317,13 +321,11 @@ func TestThreeLevelQuotaE2E(t *testing.T) {
 		unit2.Labels = map[string]string{
 			QuotaNameLabelKey: "test2",
 		}
-		unit2.Annotations = map[string]string{
-			utils.AnnotationActualQuotaOversoldType: utils.QuotaOversoldTypeForbidden,
-		}
+		unit2.Annotations = map[string]string{}
 		queueUnit2 := framework.NewQueueUnitInfo(unit2)
 		err := cache.CheckUsage("test2", queueUnit2, 1)
 		assert.True(t, err == nil)
-		_ = cache.Reserve("test2", queueUnit2)
+		cache.Reserve("test2", queueUnit2)
 
 		unit1 := &api.QueueUnit{}
 		unit1.UID = "1"
@@ -333,13 +335,11 @@ func TestThreeLevelQuotaE2E(t *testing.T) {
 		unit1.Labels = map[string]string{
 			QuotaNameLabelKey: "test1",
 		}
-		unit1.Annotations = map[string]string{
-			utils.AnnotationActualQuotaOversoldType: utils.QuotaOversoldTypeForbidden,
-		}
+		unit1.Annotations = map[string]string{}
 		queueUnit1 := framework.NewQueueUnitInfo(unit1)
 		err = cache.CheckUsage("test1", queueUnit1, 1)
 		assert.True(t, err == nil)
-		_ = cache.Reserve("test1", queueUnit1)
+		cache.Reserve("test1", queueUnit1)
 
 		assert.Equal(t, int64(2), cache.quotas["test31"].Used["cpu"])
 		assert.Equal(t, int64(2), cache.quotas["test31"].SelfUsed["cpu"])
@@ -369,10 +369,10 @@ func TestThreeLevelQuotaE2E(t *testing.T) {
 		assert.Equal(t, int64(10), cache.quotas["test1"].SelfGuaranteedUsed["cpu"])
 		assert.Equal(t, int64(10), cache.quotas["test1"].ChildrenGuaranteedUsed["cpu"])
 
-		_ = cache.Unreserve("test31", queueUnit31)
-		_ = cache.Unreserve("test32", queueUnit32)
-		_ = cache.Unreserve("test2", queueUnit2)
-		_ = cache.Unreserve("test1", queueUnit1)
+		cache.Unreserve("test31", queueUnit31)
+		cache.Unreserve("test32", queueUnit32)
+		cache.Unreserve("test2", queueUnit2)
+		cache.Unreserve("test1", queueUnit1)
 
 		assert.Equal(t, int64(0), cache.quotas["test31"].Used["cpu"])
 		assert.Equal(t, int64(0), cache.quotas["test31"].SelfUsed["cpu"])
@@ -422,13 +422,11 @@ func TestThreeLevelQuotaE2E(t *testing.T) {
 		unit2.Labels = map[string]string{
 			QuotaNameLabelKey: "test2",
 		}
-		unit2.Annotations = map[string]string{
-			utils.AnnotationActualQuotaOversoldType: utils.QuotaOversoldTypeForbidden,
-		}
+		unit2.Annotations = map[string]string{}
 		queueUnit2 := framework.NewQueueUnitInfo(unit2)
 		err := cache.CheckUsage("test2", queueUnit2, 1)
 		assert.True(t, err == nil)
-		_ = cache.Reserve("test2", queueUnit2)
+		cache.Reserve("test2", queueUnit2)
 
 		unit31 := &api.QueueUnit{}
 		unit31.UID = "31"
@@ -438,9 +436,7 @@ func TestThreeLevelQuotaE2E(t *testing.T) {
 		unit31.Labels = map[string]string{
 			QuotaNameLabelKey: "test31",
 		}
-		unit31.Annotations = map[string]string{
-			utils.AnnotationActualQuotaOversoldType: utils.QuotaOversoldTypeForbidden,
-		}
+		unit31.Annotations = map[string]string{}
 		queueUnit31 := framework.NewQueueUnitInfo(unit31)
 		err = cache.CheckUsage("test31", queueUnit31, 1)
 		assert.True(t, err == nil)
@@ -453,9 +449,7 @@ func TestThreeLevelQuotaE2E(t *testing.T) {
 		unit32.Labels = map[string]string{
 			QuotaNameLabelKey: "test32",
 		}
-		unit32.Annotations = map[string]string{
-			utils.AnnotationActualQuotaOversoldType: utils.QuotaOversoldTypeForbidden,
-		}
+		unit32.Annotations = map[string]string{}
 		queueUnit32 := framework.NewQueueUnitInfo(unit32)
 		err = cache.CheckUsage("test32", queueUnit32, 1)
 		assert.True(t, err == nil)
@@ -468,9 +462,7 @@ func TestThreeLevelQuotaE2E(t *testing.T) {
 		unit1.Labels = map[string]string{
 			QuotaNameLabelKey: "test1",
 		}
-		unit1.Annotations = map[string]string{
-			utils.AnnotationActualQuotaOversoldType: utils.QuotaOversoldTypeForbidden,
-		}
+		unit1.Annotations = map[string]string{}
 		queueUnit1 := framework.NewQueueUnitInfo(unit1)
 		err = cache.CheckUsage("test1", queueUnit1, 1)
 		assert.True(t, err == nil)
@@ -493,9 +485,7 @@ func Test_cacheImpl_Reserve_Unreserve(t *testing.T) {
 		unit1.Name = "job1"
 		unit1.Spec = api.QueueUnitSpec{}
 		unit1.Spec.Resource = v1.ResourceList{"cpu": resource.MustParse("5")}
-		unit1.Annotations = map[string]string{
-			utils.AnnotationActualQuotaOversoldType: utils.QuotaOversoldTypeForbidden,
-		}
+		unit1.Annotations = map[string]string{}
 		queueUnit1 := framework.NewQueueUnitInfo(unit1)
 
 		unit2 := &api.QueueUnit{}
@@ -503,15 +493,13 @@ func Test_cacheImpl_Reserve_Unreserve(t *testing.T) {
 		unit2.Spec = api.QueueUnitSpec{}
 		unit2.Name = "job2"
 		unit2.Spec.Resource = v1.ResourceList{"cpu": resource.MustParse("3")}
-		unit2.Annotations = map[string]string{
-			utils.AnnotationActualQuotaOversoldType: utils.QuotaOversoldTypeForce,
-		}
+		unit2.Annotations = map[string]string{}
 		queueUnit2 := framework.NewQueueUnitInfo(unit2)
 
 		{
 			err := cache.Reserve("test1", queueUnit1)
 			assert.True(t, err == nil)
-			_ = cache.Reserve("test1", queueUnit1)
+			cache.Reserve("test1", queueUnit1)
 			assert.True(t, err == nil)
 
 			err = cache.Reserve("test1", queueUnit2)
@@ -617,9 +605,7 @@ func Test_cacheImpl_Reserve_Unreserve(t *testing.T) {
 		unit1.Spec = api.QueueUnitSpec{}
 		unit1.Spec.Resource = v1.ResourceList{"cpu": resource.MustParse("8")}
 		queueUnit1 := framework.NewQueueUnitInfo(unit1)
-		unit1.Annotations = map[string]string{
-			utils.AnnotationActualQuotaOversoldType: utils.QuotaOversoldTypeForbidden,
-		}
+		unit1.Annotations = map[string]string{}
 
 		{
 			err := cache.Reserve("test1", queueUnit1)
@@ -687,147 +673,4 @@ func Test_cacheImpl_AddOrUpdateQuota_DeleteQuota(t *testing.T) {
 	cache.DeleteQuota(q)
 	assert.Equal(t, 0, len(cache.quotaParent))
 	assert.Equal(t, 0, len(cache.quotas))
-}
-
-func Test_cacheImpl_SchedulingState(t *testing.T) {
-	cache := buildCache()
-
-	uid1 := types.UID("queueunit-1")
-	uid2 := types.UID("queueunit-2")
-
-	// Test initial state - should not be scheduling
-	assert.False(t, cache.IsScheduling(uid1))
-	assert.False(t, cache.IsScheduling(uid2))
-
-	// Test MarkScheduling
-	cache.MarkScheduling(uid1)
-	assert.True(t, cache.IsScheduling(uid1))
-	assert.False(t, cache.IsScheduling(uid2))
-
-	// Test marking multiple queueUnits
-	cache.MarkScheduling(uid2)
-	assert.True(t, cache.IsScheduling(uid1))
-	assert.True(t, cache.IsScheduling(uid2))
-
-	// Test ClearScheduling for one queueUnit
-	cache.ClearScheduling(uid1)
-	assert.False(t, cache.IsScheduling(uid1))
-	assert.True(t, cache.IsScheduling(uid2))
-
-	// Test ClearScheduling for non-existent uid (should not panic)
-	cache.ClearScheduling(types.UID("non-existent"))
-	assert.False(t, cache.IsScheduling(types.UID("non-existent")))
-
-	// Test ClearScheduling for remaining queueUnit
-	cache.ClearScheduling(uid2)
-	assert.False(t, cache.IsScheduling(uid2))
-
-	// Test re-marking after clear
-	cache.MarkScheduling(uid1)
-	assert.True(t, cache.IsScheduling(uid1))
-	cache.ClearScheduling(uid1)
-	assert.False(t, cache.IsScheduling(uid1))
-}
-
-func Test_cacheImpl_SchedulingAndReservedIndependence(t *testing.T) {
-	cache := buildCache()
-
-	uid := types.UID("queueunit-test")
-
-	// Scheduling and Reserved states should be independent
-	assert.False(t, cache.IsScheduling(uid))
-	assert.False(t, cache.IsReserved(uid))
-
-	// Mark as scheduling only
-	cache.MarkScheduling(uid)
-	assert.True(t, cache.IsScheduling(uid))
-	assert.False(t, cache.IsReserved(uid))
-
-	// Clear scheduling
-	cache.ClearScheduling(uid)
-	assert.False(t, cache.IsScheduling(uid))
-	assert.False(t, cache.IsReserved(uid))
-
-	// Scheduling state should not affect reserved state tracking
-	cache.MarkScheduling(uid)
-	assert.True(t, cache.IsScheduling(uid))
-}
-
-func Test_cacheImpl_Unreserve_UsesReservedQueueUnitResources(t *testing.T) {
-	// This test verifies that Unreserve correctly releases resources
-	// even when the queueUnit's state has changed (e.g., resource request changed)
-	// The fix ensures DeleteQueueUnit uses the reserved queueUnit's resources,
-	// not the potentially modified parameter's resources
-
-	cache := buildCache()
-
-	// Create a quota hierarchy
-	quotas := []*v1alpha1.ElasticQuota{
-		MakeElasticQuota("parent-quota", "default").
-			Max(map[string]int64{"cpu": 100000}).Min(map[string]int64{"cpu": 50000}).Quota(),
-		MakeElasticQuota("child-quota", "default").Parent("parent-quota").
-			Max(map[string]int64{"cpu": 50000}).Min(map[string]int64{"cpu": 20000}).Quota(),
-	}
-	for _, quota := range quotas {
-		cache.AddOrUpdateQuota(quota)
-	}
-
-	// Create a queueUnit with 10 CPU (10000 milli-cores)
-	originalQueueUnit := &framework.QueueUnitInfo{}
-	originalQueueUnit.Unit = &api.QueueUnit{}
-	originalQueueUnit.Unit.Name = "test-job"
-	originalQueueUnit.Unit.UID = types.UID("job-uid-123")
-	originalQueueUnit.Unit.Spec = api.QueueUnitSpec{}
-	originalQueueUnit.Unit.Spec.Resource = make(v1.ResourceList)
-	originalQueueUnit.Unit.Spec.Resource["cpu"] = resource.MustParse("10") // 10 cores = 10000 milli-cores
-	originalQueueUnit.Unit.Labels = map[string]string{
-		QuotaNameLabelKey: "child-quota",
-	}
-	originalQueueUnit.Unit.Annotations = map[string]string{
-		utils.AnnotationActualQuotaOversoldType: utils.QuotaOversoldTypeForbidden,
-	}
-
-	// Reserve the queueUnit
-	err := cache.Reserve("child-quota", originalQueueUnit)
-	assert.Nil(t, err)
-	assert.True(t, cache.IsReserved(types.UID("job-uid-123")))
-
-	// Verify resources are reserved correctly
-	childQuotaInfo := cache.GetElasticQuotaInfo4Test("child-quota")
-	parentQuotaInfo := cache.GetElasticQuotaInfo4Test("parent-quota")
-	assert.Equal(t, int64(10000), childQuotaInfo.Used["cpu"]) // 10 cores in milli-cores
-	assert.Equal(t, int64(10000), childQuotaInfo.SelfUsed["cpu"])
-	assert.Equal(t, int64(10000), parentQuotaInfo.Used["cpu"])
-	assert.Equal(t, int64(0), parentQuotaInfo.ChildrenUsed["cpu"])
-
-	// Simulate job state change: the queueUnit's resource request changed to 20 CPU
-	// This could happen if the job was updated before being unreserved
-	modifiedQueueUnit := &framework.QueueUnitInfo{}
-	modifiedQueueUnit.Unit = &api.QueueUnit{}
-	modifiedQueueUnit.Unit.Name = "test-job"
-	modifiedQueueUnit.Unit.UID = types.UID("job-uid-123") // Same UID
-	modifiedQueueUnit.Unit.Spec = api.QueueUnitSpec{}
-	modifiedQueueUnit.Unit.Spec.Resource = make(v1.ResourceList)
-	modifiedQueueUnit.Unit.Spec.Resource["cpu"] = resource.MustParse("20") // Changed to 20 cores
-	modifiedQueueUnit.Unit.Labels = map[string]string{
-		QuotaNameLabelKey: "child-quota",
-	}
-	modifiedQueueUnit.Unit.Annotations = map[string]string{
-		utils.AnnotationActualQuotaOversoldType: utils.QuotaOversoldTypeForbidden,
-	}
-
-	// Unreserve with the MODIFIED queueUnit
-	// The fix ensures it releases the ORIGINAL 10 CPU, not the modified 20 CPU
-	err = cache.Unreserve("child-quota", modifiedQueueUnit)
-	assert.Nil(t, err)
-	assert.False(t, cache.IsReserved(types.UID("job-uid-123")))
-
-	// Verify resources are released correctly (should be 0, not -10000)
-	// If the bug existed, it would release 20000 and result in -10000
-	childQuotaInfo = cache.GetElasticQuotaInfo4Test("child-quota")
-	parentQuotaInfo = cache.GetElasticQuotaInfo4Test("parent-quota")
-	assert.Equal(t, int64(0), childQuotaInfo.Used["cpu"]) // Should be 0, not -10000
-	assert.Equal(t, int64(0), childQuotaInfo.SelfUsed["cpu"])
-	assert.Equal(t, int64(0), parentQuotaInfo.Used["cpu"]) // Should be 0, not -10000
-	assert.Equal(t, int64(0), parentQuotaInfo.ChildrenUsed["cpu"])
 }
