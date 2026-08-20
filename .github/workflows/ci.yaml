@@ -70,5 +70,9 @@ jobs:
         key: ${{ runner.os }}-integration-${{ hashFiles('**/go.sum') }}
         restore-keys: |
           ${{ runner.os }}-integration-
+    - name: Setup envtest
+      run: |
+        go install sigs.k8s.io/controller-runtime/tools/setup-envtest@latest
+        echo "KUBEBUILDER_ASSETS=$(setup-envtest use 1.33 -p path)" >> $GITHUB_ENV
     - name: Run integration tests
       run: GOWORK=off go test -mod=mod ./pkg/test/integration/... -count=1 -v
