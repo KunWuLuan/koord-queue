@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-logr/logr"
 	"github.com/koordinator-sh/koord-queue/pkg/apis/scheduling/v1alpha1"
+	"github.com/koordinator-sh/koord-queue/pkg/features"
 	"github.com/koordinator-sh/koord-queue/pkg/jobext/util"
 	"golang.org/x/time/rate"
 	corev1 "k8s.io/api/core/v1"
@@ -112,7 +113,11 @@ func (d *ResourceReporter) SetupWithManager(mgr ctrl.Manager, workers int, wqQPS
 			if !ok {
 				return
 			}
-			if oldObj.Spec.NodeName == obj.Spec.NodeName {
+			// Scheduling a pod changes the resources in flight, and so does a pod
+			// completing: its share of the reservation can be handed back.
+			justCompleted := features.Enabled(features.ReclaimablePods) &&
+				isPodTerminal(obj) && !isPodTerminal(oldObj)
+			if oldObj.Spec.NodeName == obj.Spec.NodeName && !justCompleted {
 				return
 			}
 			owner := d.jm.FindWorkloadFromPod(context.Background(), obj)
@@ -194,22 +199,31 @@ func (d *ResourceReporter) syncInFlightWorkers(ctx context.Context, log logr.Log
 	}
 	runningByPs := map[string]int64{}
 	resByPs := map[string]corev1.ResourceList{}
+	// Pods that completed no longer need their slot. Counting them separately lets the quota be
+	// handed back before the whole job finishes, without ever guessing about pods we cannot see.
+	terminalByPs := map[string]int64{}
+	reclaimEnabled := features.Enabled(features.ReclaimablePods)
 	for ps, pss := range podsByPs {
 		// 	return ctrl.Result{RequeueAfter: DefaultRequeuePeriod}, nil
 		// }
 		// log.V(3).Info("sync podset", "podset", ps, "podcount", len(pss))
 		runningByPs[ps] = 0
 		for _, pod := range pss {
-			if pod.Spec.NodeName != "" {
-				runningByPs[ps]++
-				if len(resByPs[ps]) == 0 {
-					resByPs[ps] = corev1.ResourceList{}
-				}
-				if res, ok := pd2Res[pod.Namespace+"/"+pod.Name]; ok {
-					util.AddResourceList(resByPs[ps], res)
-				} else {
-					util.AddResourceList(resByPs[ps], util.GetPodRequestsAndLimits(&pod.Spec))
-				}
+			if pod.Spec.NodeName == "" {
+				continue
+			}
+			if reclaimEnabled && isPodTerminal(pod) {
+				terminalByPs[ps]++
+				continue
+			}
+			runningByPs[ps]++
+			if len(resByPs[ps]) == 0 {
+				resByPs[ps] = corev1.ResourceList{}
+			}
+			if res, ok := pd2Res[pod.Namespace+"/"+pod.Name]; ok {
+				util.AddResourceList(resByPs[ps], res)
+			} else {
+				util.AddResourceList(resByPs[ps], util.GetPodRequestsAndLimits(&pod.Spec))
 			}
 		}
 	}
@@ -255,6 +269,27 @@ func (d *ResourceReporter) syncInFlightWorkers(ctx context.Context, log logr.Log
 			}
 			qu.Status.Admissions = append(qu.Status.Admissions, ad)
 			updated = true
+		}
+	}
+	// Report the completed pods and give their share of the reservation back. This runs after
+	// the loop above so it sees the refreshed running counts, and it only ever shrinks a podSet
+	// down to the pods that are still alive.
+	if reclaimEnabled {
+		if syncReclaimablePods(qu, terminalByPs) {
+			updated = true
+		}
+		for i := range qu.Status.Admissions {
+			ad := &qu.Status.Admissions[i]
+			if terminalByPs[ad.Name] == 0 {
+				continue
+			}
+			if stillRunning := runningByPs[ad.Name]; ad.Replicas > stillRunning {
+				log.V(1).Info("release the reservation of completed pods",
+					"podset", ad.Name, "replicasBefore", ad.Replicas, "replicasAfter", stillRunning,
+					"reclaimable", terminalByPs[ad.Name])
+				ad.Replicas = stillRunning
+				updated = true
+			}
 		}
 	}
 	if qu.Status.PodState.Pending != podState.Pending || qu.Status.PodState.Running != podState.Running || updated {
