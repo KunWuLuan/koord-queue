@@ -27,6 +27,39 @@ const (
 	//
 	// Enables Available Quota Checking when using ElasticQuotaTree.
 	ElasticQuotaTreeCheckAvailableQuota featuregate.Feature = "ElasticQuotaTreeCheckAvailableQuota"
+	// owner: @yueming
+	// beta: v1.3.0
+	//
+	// Enables mirroring the QueueUnit phase into status.conditions using the standard
+	// metav1.Condition representation. Phase stays authoritative.
+	QueueUnitConditions featuregate.Feature = "QueueUnitConditions"
+	// owner: @yueming
+	// alpha: v1.3.0
+	//
+	// Enables QueueUnit spec.active, which stops a queue unit from being admitted and
+	// evicts it if already admitted.
+	QueueUnitActive featuregate.Feature = "QueueUnitActive"
+	// owner: @yueming
+	// alpha: v1.3.0
+	//
+	// Enables structured exponential backoff re-queueing tracked in status.requeueState.
+	QueueUnitRequeueState featuregate.Feature = "QueueUnitRequeueState"
+	// owner: @yueming
+	// alpha: v1.3.0
+	//
+	// Enables reporting terminated pods in status.reclaimablePods so their quota is
+	// returned before the whole job finishes.
+	ReclaimablePods featuregate.Feature = "ReclaimablePods"
+	// owner: @yueming
+	// alpha: v1.3.0
+	//
+	// Enables deactivating a queue unit once it exceeds spec.maximumExecutionTimeSeconds.
+	MaximumExecutionTime featuregate.Feature = "MaximumExecutionTime"
+	// owner: @yueming
+	// alpha: v1.3.0
+	//
+	// Enables admitting a podSet with fewer replicas than requested, down to its minCount.
+	PartialAdmission featuregate.Feature = "PartialAdmission"
 )
 
 func init() {
@@ -44,6 +77,18 @@ var defaultFeatureGates = map[featuregate.Feature]featuregate.FeatureSpec{
 	ElasticQuotaTreeDecoupledQueue:      {Default: true, PreRelease: featuregate.Beta},
 	ElasticQuotaTreeBuildQueueForQuota:  {Default: true, PreRelease: featuregate.Beta},
 	ElasticQuotaTreeCheckAvailableQuota: {Default: false, PreRelease: featuregate.Alpha},
+
+	QueueUnitConditions: {Default: true, PreRelease: featuregate.Beta},
+
+	QueueUnitActive: {Default: false, PreRelease: featuregate.Alpha},
+
+	QueueUnitRequeueState: {Default: false, PreRelease: featuregate.Alpha},
+
+	ReclaimablePods: {Default: false, PreRelease: featuregate.Alpha},
+
+	MaximumExecutionTime: {Default: false, PreRelease: featuregate.Alpha},
+
+	PartialAdmission: {Default: false, PreRelease: featuregate.Alpha},
 }
 
 // Helper for `utilfeature.DefaultFeatureGate.Enabled()`
