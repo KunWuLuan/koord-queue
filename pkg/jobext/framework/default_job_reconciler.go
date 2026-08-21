@@ -10,6 +10,7 @@ import (
 	koordinatorschedulerv1alpha1 "github.com/koordinator-sh/apis/scheduling/v1alpha1"
 	"github.com/koordinator-sh/koord-queue/pkg/apis/scheduling/v1alpha1"
 	"github.com/koordinator-sh/koord-queue/pkg/jobext/util"
+	queueutils "github.com/koordinator-sh/koord-queue/pkg/utils"
 	"golang.org/x/time/rate"
 
 	corev1 "k8s.io/api/core/v1"
@@ -454,12 +455,14 @@ func (d *GenericJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			log.V(1).Info("resume generic job due to related queueunit dequeued")
 			return ctrl.Result{RequeueAfter: handle.runningTimeout}, handle.genericJobExtension.Resume(ctx, object, d.client)
 		}
-		var lastUpdateTime = time.Now()
-		if queueUnit.Status.LastUpdateTime != nil {
-			lastUpdateTime = queueUnit.Status.LastUpdateTime.Time
-		}
-		duration := time.Since(lastUpdateTime)
-		if queueUnit.Status.Phase == v1alpha1.Backoff && duration > handle.backoffTime {
+		if queueUnit.Status.Phase == v1alpha1.Backoff {
+			// The structured backoff state, when enabled, decides when the unit may return to
+			// the queue; otherwise the flat backoff time is used as before.
+			elapsed, remaining := queueutils.QueueUnitRequeueBackoffElapsed(&queueUnit.Status, handle.backoffTime, time.Now())
+			if !elapsed {
+				log.V(1).Info("job will requeue backoff timeout", "after", remaining)
+				return ctrl.Result{RequeueAfter: remaining}, nil
+			}
 			err := handle.requeueJobExtension.OnQueueUnitBackoffTimeout(ctx, object, queueUnit, d.client)
 			if err != nil {
 				return ctrl.Result{}, err
@@ -470,11 +473,9 @@ func (d *GenericJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			queueUnit.Status.Phase = v1alpha1.Enqueued
 			queueUnit.Status.Message = "Enqueued because backoff timeout"
 			queueUnit.Status.LastUpdateTime = &v1.Time{Time: time.Now()}
+			queueutils.SyncQueueUnitConditions(&queueUnit.Status)
 			log.V(1).Info("job backoff timeout")
 			return ctrl.Result{RequeueAfter: DefaultRequeuePeriod}, d.client.SubResource("status").Update(ctx, queueUnit)
-		} else if queueUnit.Status.Phase == v1alpha1.Backoff && duration < handle.backoffTime {
-			log.V(1).Info("job will requeue backoff timeout", "after", handle.backoffTime-duration)
-			return ctrl.Result{RequeueAfter: handle.backoffTime - duration}, nil
 		}
 		// status == Enqueued
 		if queueUnit.Status.Phase == v1alpha1.Enqueued {
@@ -536,6 +537,8 @@ func (d *GenericJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			if duration >= handle.runningTimeout {
 				log.V(0).Info("job running timeout")
 				accumulateExecutionTime(&queueUnit.Status)
+				// Record the attempt so each successive failure waits longer.
+				backoff := queueutils.RecordQueueUnitRequeueState(&queueUnit.Status, handle.backoffTime, time.Now())
 				if err := util.UpdateQueueUnitStatus(queueUnit, v1alpha1.Backoff, "Backoff due to running timeout", d.client); err != nil {
 					return ctrl.Result{}, client.IgnoreNotFound(err)
 				}
@@ -543,7 +546,10 @@ func (d *GenericJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 				if err != nil {
 					return ctrl.Result{RequeueAfter: DefaultRequeuePeriod}, err
 				}
-				return ctrl.Result{Requeue: true, RequeueAfter: handle.backoffTime}, nil
+				if backoff <= 0 {
+					backoff = handle.backoffTime
+				}
+				return ctrl.Result{Requeue: true, RequeueAfter: backoff}, nil
 			} else {
 				log.V(2).Info("job will requeue running timeout", "after", handle.runningTimeout-duration)
 				return ctrl.Result{RequeueAfter: handle.runningTimeout - duration}, nil
@@ -557,7 +563,8 @@ func (d *GenericJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 				return ctrl.Result{RequeueAfter: DefaultRequeuePeriod}, err
 			}
 			// try update queue unit status
-			if duration > handle.backoffTime {
+			elapsed, remaining := queueutils.QueueUnitRequeueBackoffElapsed(&queueUnit.Status, handle.backoffTime, time.Now())
+			if elapsed {
 				log.V(0).Info("job backoff timeout")
 				err := handle.requeueJobExtension.OnQueueUnitBackoffTimeout(ctx, object, queueUnit, d.client)
 				if err != nil {
@@ -568,8 +575,8 @@ func (d *GenericJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 				}
 				return ctrl.Result{RequeueAfter: DefaultRequeuePeriod}, util.UpdateQueueUnitStatus(queueUnit, v1alpha1.Enqueued, "Enqueued because backoff timeout", d.client)
 			} else {
-				log.V(2).Info("job will requeue backoff timeout", "after", handle.backoffTime-duration)
-				return ctrl.Result{RequeueAfter: handle.backoffTime - duration}, nil
+				log.V(2).Info("job will requeue backoff timeout", "after", remaining)
+				return ctrl.Result{RequeueAfter: remaining}, nil
 			}
 		}
 

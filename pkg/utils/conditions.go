@@ -112,6 +112,8 @@ func SyncQueueUnitConditions(status *v1alpha1.QueueUnitStatus) bool {
 		changed = setCondition(&status.Conditions, trueCondition(v1alpha1.QueueUnitQuotaReserved, reasonQuotaReserved, "Quota is reserved in the queue")) || changed
 		changed = setCondition(&status.Conditions, trueCondition(v1alpha1.QueueUnitAdmitted, reasonAdmitted, "The queue unit is admitted and the job is released")) || changed
 		changed = setCondition(&status.Conditions, trueCondition(v1alpha1.QueueUnitPodsReady, reasonPodsRunning, "The pods of the job are running")) || changed
+		// The job made it to running, so the next failure starts a fresh backoff sequence.
+		changed = ClearQueueUnitRequeueState(status) || changed
 	case v1alpha1.Succeed:
 		changed = setCondition(&status.Conditions, trueCondition(v1alpha1.QueueUnitFinished, reasonSucceeded, "The job succeeded")) || changed
 	case v1alpha1.Failed:
