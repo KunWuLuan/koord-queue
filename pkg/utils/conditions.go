@@ -97,6 +97,9 @@ func SyncQueueUnitConditions(status *v1alpha1.QueueUnitStatus) bool {
 	case v1alpha1.Enqueued:
 		changed = setCondition(&status.Conditions, falseCondition(v1alpha1.QueueUnitQuotaReserved, reasonPending, "The queue unit is waiting in its queue")) || changed
 		changed = setCondition(&status.Conditions, falseCondition(v1alpha1.QueueUnitAdmitted, reasonPending, "The queue unit is not admitted yet")) || changed
+		// Stop the execution clock: PodsReady doubles as the start marker for the maximum
+		// execution time, so leaving it True here would count the same interval twice.
+		changed = setConditionIfPresent(&status.Conditions, falseCondition(v1alpha1.QueueUnitPodsReady, reasonPending, "The pods of the job are not running")) || changed
 		// Only clear a previous eviction, never introduce one on a fresh queue unit.
 		changed = setConditionIfPresent(&status.Conditions, falseCondition(v1alpha1.QueueUnitEvicted, reasonRequeued, "The queue unit is queued again")) || changed
 	case v1alpha1.Reserved:
@@ -116,6 +119,7 @@ func SyncQueueUnitConditions(status *v1alpha1.QueueUnitStatus) bool {
 	case v1alpha1.Backoff:
 		changed = setCondition(&status.Conditions, falseCondition(v1alpha1.QueueUnitQuotaReserved, v1alpha1.QueueUnitEvictedByBackoffTimeout, "The reservation is released while backing off")) || changed
 		changed = setCondition(&status.Conditions, falseCondition(v1alpha1.QueueUnitAdmitted, v1alpha1.QueueUnitEvictedByBackoffTimeout, "The queue unit is no longer admitted")) || changed
+		changed = setConditionIfPresent(&status.Conditions, falseCondition(v1alpha1.QueueUnitPodsReady, v1alpha1.QueueUnitEvictedByBackoffTimeout, "The pods of the job are not running")) || changed
 		changed = setCondition(&status.Conditions, trueCondition(v1alpha1.QueueUnitEvicted, v1alpha1.QueueUnitEvictedByBackoffTimeout, status.Message)) || changed
 	case v1alpha1.SchedFailed:
 		changed = setCondition(&status.Conditions, falseCondition(v1alpha1.QueueUnitAdmitted, reasonSchedulingFailed, status.Message)) || changed
@@ -134,6 +138,14 @@ func SetQueueUnitEvictedCondition(status *v1alpha1.QueueUnitStatus, reason, mess
 	changed := setCondition(&status.Conditions, trueCondition(v1alpha1.QueueUnitEvicted, reason, message))
 	changed = setCondition(&status.Conditions, falseCondition(v1alpha1.QueueUnitAdmitted, reason, message)) || changed
 	return changed
+}
+
+// StopQueueUnitExecutionClock marks the pods as no longer running so the maximum execution time
+// stops accruing. Callers use it when they reset the accumulated execution time, to make sure the
+// interval that was just discarded is not accumulated again by a later eviction.
+func StopQueueUnitExecutionClock(status *v1alpha1.QueueUnitStatus) bool {
+	return setConditionIfPresent(&status.Conditions,
+		falseCondition(v1alpha1.QueueUnitPodsReady, reasonPending, "The pods of the job are not running"))
 }
 
 // FindQueueUnitCondition returns the condition of the given type, or nil when absent.

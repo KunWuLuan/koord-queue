@@ -296,6 +296,9 @@ func (d *GenericJobReconciler) createQueueUnit(ctx context.Context, handle JobHa
 			PriorityClassName: pc,
 			Priority:          pri,
 			PodSets:           handle.genericJobExtension.PodSet(ctx, object),
+			// Parsed at creation time so a job annotated inactive is never admitted even once.
+			Active:                      activeFromAnnotation(object),
+			MaximumExecutionTimeSeconds: maxExecutionTimeFromAnnotation(object),
 		},
 		Status: v1alpha1.QueueUnitStatus{
 			Phase:          status,
@@ -318,7 +321,7 @@ func (d *GenericJobReconciler) createQueueUnit(ctx context.Context, handle JobHa
 	return d.client.Create(ctx, queueUnit)
 }
 
-func (d *GenericJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (d *GenericJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (res ctrl.Result, reterr error) {
 	log := ctrl.LoggerFrom(ctx).WithValues("job", req.String())
 	infos := strings.Split(req.Namespace, "|")
 	if len(infos) != 2 {
@@ -401,13 +404,37 @@ func (d *GenericJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			return ctrl.Result{Requeue: true}, err
 		}
 	}
+	// Keep spec.active and spec.maximumExecutionTimeSeconds in sync with the job annotations
+	if updated, err := d.syncQueueUnitActivation(ctx, object, queueUnit); updated || err != nil {
+		return ctrl.Result{Requeue: true}, err
+	}
 	log = log.WithValues("queueunit", queueUnit.Name, "queueUnitStatus", queueUnit.Status.Phase, "jobStatus", jobStatus)
 	trace := trace.New("jobReconciling")
 	defer trace.LogIfLong(100 * time.Millisecond)
+
+	// A deactivated queue unit must give its resources back whatever the job status is, so this
+	// runs before the per-status handling below.
+	if handled, err := d.reconcileDeactivation(ctx, log, handle, object, queueUnit); handled || err != nil {
+		if err != nil {
+			return ctrl.Result{RequeueAfter: DefaultRequeuePeriod}, err
+		}
+		return ctrl.Result{RequeueAfter: DefaultRequeuePeriod}, nil
+	}
+	// Deactivate the queue unit once it outlives its execution budget; the eviction itself is
+	// then carried out by reconcileDeactivation on the next round.
+	if remaining, err := d.reconcileMaxExecutionTime(ctx, log, object, queueUnit); err != nil {
+		return ctrl.Result{RequeueAfter: DefaultRequeuePeriod}, err
+	} else if remaining > 0 {
+		// Wake up no later than the deadline, whatever the status handling below decides.
+		defer func() { res = tightenRequeue(res, remaining) }()
+	}
 	switch jobStatus {
 	case Queuing:
 		if queueUnit.Status.Phase == "Preempted" {
 			log.V(0).Info("success to suspend and delete job resources, set job status to Enqueued")
+			// Preemption keeps the queue unit active, so the time it already ran is banked
+			// against its execution budget before it goes back to the queue.
+			accumulateExecutionTime(&queueUnit.Status)
 			return ctrl.Result{Requeue: true, RequeueAfter: DefaultRequeuePeriod}, util.UpdateQueueUnitStatus(queueUnit, v1alpha1.Enqueued, "Enqueued after preempted", d.client)
 
 		}
@@ -490,6 +517,7 @@ func (d *GenericJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			}
 
 			log.V(2).Info("success to suspend and delete job resources, set job status to Enqueued")
+			accumulateExecutionTime(&queueUnit.Status)
 			return ctrl.Result{Requeue: true, RequeueAfter: DefaultRequeuePeriod}, util.UpdateQueueUnitStatus(queueUnit, v1alpha1.Enqueued, "Enqueued after preempted", d.client)
 		}
 		if handle.runningTimeout == 0 {
@@ -507,6 +535,7 @@ func (d *GenericJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		if queueUnit.Status.Phase == v1alpha1.Dequeued {
 			if duration >= handle.runningTimeout {
 				log.V(0).Info("job running timeout")
+				accumulateExecutionTime(&queueUnit.Status)
 				if err := util.UpdateQueueUnitStatus(queueUnit, v1alpha1.Backoff, "Backoff due to running timeout", d.client); err != nil {
 					return ctrl.Result{}, client.IgnoreNotFound(err)
 				}
