@@ -226,7 +226,11 @@ var _ = Describe("ResourceReporter Integration Tests", func() {
 		Expect(k8sClient.DeleteAllOf(ctx, headPod, client.InNamespace("default"))).Should(Succeed())
 	})
 
-	It("should reclaim Replicas via partialRunningTimeout after scheduler preempts a pod", func() {
+	// The reporter used to shrink Replicas once the pods of a preempted job disappeared
+	// (partialRunningTimeout). That was removed because a missing pod cannot be told apart from
+	// a pod that was never created, so shrinking made used drop below reality and let the next
+	// job be admitted over quota. This spec now guards that the reservation is held instead.
+	It("should keep Replicas reserved after a preempted pod disappears", func() {
 		const (
 			jobName       = "victim-job-prt"
 			queueUnitName = "victim-job-prt" // QueueUnitSuffix is "" for Job type
@@ -423,8 +427,10 @@ var _ = Describe("ResourceReporter Integration Tests", func() {
 			return updated.Status.Admissions[0].Running
 		}, 30*time.Second, 500*time.Millisecond).Should(Equal(int64(0)))
 
-		By("Verifying partialRunningTimeout reduces Replicas to 0 (timeout=5s)")
-		Eventually(func() int64 {
+		By("Verifying the reservation is held even though no pod is running")
+		// Releasing it here is what previously caused over-admission: the quota must stay
+		// accounted for until the job extension explicitly gives it back.
+		Consistently(func() int64 {
 			updated := &v1alpha1.QueueUnit{}
 			if err := k8sClient.Get(ctx, types.NamespacedName{Namespace: namespace, Name: queueUnitName}, updated); err != nil {
 				return -1
@@ -433,7 +439,7 @@ var _ = Describe("ResourceReporter Integration Tests", func() {
 				return -1
 			}
 			return updated.Status.Admissions[0].Replicas
-		}, 30*time.Second, 500*time.Millisecond).Should(Equal(int64(0)))
+		}, 10*time.Second, 500*time.Millisecond).Should(Equal(int64(1)))
 
 		By("Cleanup")
 		Expect(k8sClient.Delete(ctx, job)).Should(Succeed())
@@ -441,7 +447,10 @@ var _ = Describe("ResourceReporter Integration Tests", func() {
 		Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, pendingPod))).Should(Succeed())
 	})
 
-	It("should reduce Replicas via reconcilePodDeletion when a pod is externally deleted (Dequeued phase)", func() {
+	// reconcilePodDeletion used to lower Replicas as soon as a pod went missing. It was removed
+	// for the same reason: right after a queue unit is dequeued its pods do not exist yet, and
+	// shrinking there made the quota look free and admitted a second job over the limit.
+	It("should not shrink Replicas when a pod is deleted externally (Dequeued phase)", func() {
 		const (
 			jobName       = "poddel-job"
 			queueUnitName = "poddel-job"
@@ -579,8 +588,9 @@ var _ = Describe("ResourceReporter Integration Tests", func() {
 			return err != nil
 		}, 5*time.Second, 200*time.Millisecond).Should(BeTrue())
 
-		By("Verifying reconcilePodDeletion reduces Replicas to 1")
-		Eventually(func() int64 {
+		By("Verifying the admitted Replicas stay at 2")
+		// A pod that is simply gone is no evidence that its share of the quota is free.
+		Consistently(func() int64 {
 			updated := &v1alpha1.QueueUnit{}
 			if err := k8sClient.Get(ctx, types.NamespacedName{Namespace: namespace, Name: queueUnitName}, updated); err != nil {
 				return -1
@@ -589,7 +599,7 @@ var _ = Describe("ResourceReporter Integration Tests", func() {
 				return -1
 			}
 			return updated.Status.Admissions[0].Replicas
-		}, 15*time.Second, 500*time.Millisecond).Should(Equal(int64(1)))
+		}, 10*time.Second, 500*time.Millisecond).Should(Equal(int64(2)))
 
 		By("Cleanup")
 		Expect(k8sClient.Delete(ctx, job)).Should(Succeed())
