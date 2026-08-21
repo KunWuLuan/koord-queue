@@ -79,6 +79,16 @@ type RequeueJobExtension interface {
 	OnQueueUnitBackoffTimeout(ctx context.Context, obj client.Object, queueUnit *v1alpha1.QueueUnit, client client.Client) error
 }
 
+// PartialAdmissionJobExtension is implemented by job types that can run with fewer replicas than
+// requested. The scheduler may admit such a job partially, and the replica count it granted is
+// then applied to the job before it is resumed, so the job never uses more than was admitted.
+type PartialAdmissionJobExtension interface {
+	// SetReplicas resizes the given podSet to count replicas. It reports whether the object was
+	// changed, so the caller can skip a needless update, and refuses the resize with an error
+	// only when the job cannot express it.
+	SetReplicas(ctx context.Context, obj client.Object, podSetName string, count int32) (bool, error)
+}
+
 type JobManager interface {
 	FindWorkloadFromPod(ctx context.Context, pod *v1.Pod) *ownerInfo
 

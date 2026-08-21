@@ -238,21 +238,27 @@ func (s *Scheduler) schedule(ctx context.Context, q *queue.Queue) {
 		status := s.fw.RunFilterPlugins(schedulingCycleCtx, unitInfo)
 		metrics.JobSchedulingAlgorithmLatency.Observe(float64(time.Since(startTime)) / float64(time.Millisecond))
 		if status.Code() != framework.Success {
-			err = q.Preempt(ctx, unitInfo)
-			if err != nil {
-				logger.Error(err, "failed to preempt queueUnit")
-				status.AppendMessage("; preempt failed")
+			// A job that declared a minCount may run smaller instead of waiting for the full
+			// request, which is preferable to evicting somebody else's job.
+			if partialUnit, partialStatus := s.tryPartialAdmission(schedulingCycleCtx, logger, unitInfo); partialStatus != nil {
+				unitInfo, status = partialUnit, partialStatus
 			} else {
-				status.AppendMessage("; preempt succeed")
+				err = q.Preempt(ctx, unitInfo)
+				if err != nil {
+					logger.Error(err, "failed to preempt queueUnit")
+					status.AppendMessage("; preempt failed")
+				} else {
+					status.AppendMessage("; preempt succeed")
+				}
+				metrics.JobScheduleAttempts.WithLabelValues(q.Name(), "unschedulable").Add(1)
+				s.ErrorFunc(ctx, unitInfo, q, status.Message(), finished, err == nil)
+				logger.V(2).Info("------------------ schedule end ------------------")
+				return
 			}
-			metrics.JobScheduleAttempts.WithLabelValues(q.Name(), "unschedulable").Add(1)
-			s.ErrorFunc(ctx, unitInfo, q, status.Message(), finished, err == nil)
-			logger.V(2).Info("------------------ schedule end ------------------")
-			return
 		}
 		metrics.JobScheduleAttempts.WithLabelValues(q.Name(), "scheduled").Add(1)
-		// in first version, we admit all requests everytime
-		// maybe in later version we will support partial admit
+		// Admissions may carry fewer replicas than requested when the queue unit was admitted
+		// partially; everything downstream keys off these numbers.
 		res := status.Admissions()
 		copiedUnit := unitInfo.Unit.DeepCopy()
 		copiedUnit.Status.Phase = v1alpha1.Dequeued

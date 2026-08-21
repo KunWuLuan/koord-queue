@@ -18,6 +18,7 @@ package handles
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"k8s.io/client-go/rest"
@@ -234,6 +235,24 @@ func (j *Job) ManagedByQueue(ctx context.Context, obj client.Object) bool {
 
 func (j *Job) QueueUnitSuffix() string {
 	return ""
+}
+
+// SetReplicas shrinks the job to the number of replicas that were actually admitted. Only jobs
+// that leave completions unset are resized: with an explicit completions count, lowering
+// parallelism alone would leave the job unable to ever complete.
+func (j *Job) SetReplicas(ctx context.Context, obj client.Object, podSetName string, count int32) (bool, error) {
+	job := obj.(*batchv1.Job)
+	if podSetName != job.Name {
+		return false, nil
+	}
+	if job.Spec.Completions != nil {
+		return false, fmt.Errorf("job %s/%s sets completions, refusing to run it partially", job.Namespace, job.Name)
+	}
+	if job.Spec.Parallelism != nil && *job.Spec.Parallelism == count {
+		return false, nil
+	}
+	job.Spec.Parallelism = ptr.To(count)
+	return true, nil
 }
 
 func NewJobReconciler(cli client.Client, config *rest.Config, scheme *runtime.Scheme, managedAllJobs bool, args string) framework.JobHandle {

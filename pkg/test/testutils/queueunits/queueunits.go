@@ -117,6 +117,16 @@ func (q *QueueUnitWrapper) MaximumExecutionTime(seconds int32) *QueueUnitWrapper
 	return q
 }
 
+// MinCount marks the given podSet as partially admissible down to minCount replicas.
+func (q *QueueUnitWrapper) MinCount(podSetName string, minCount int32) *QueueUnitWrapper {
+	for i := range q.queueunit.Spec.PodSets {
+		if q.queueunit.Spec.PodSets[i].Name == podSetName {
+			q.queueunit.Spec.PodSets[i].MinCount = ptr.To(minCount)
+		}
+	}
+	return q
+}
+
 func (q *QueueUnitWrapper) QueueUnit() *v1alpha1.QueueUnit {
 	return q.queueunit
 }

@@ -447,11 +447,18 @@ func (d *GenericJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			return ctrl.Result{RequeueAfter: DefaultRequeuePeriod}, nil
 		}
 		if queueUnit.Status.Phase == v1alpha1.SchedSucceed {
+			// Resize before resuming: the job must not create more pods than were admitted.
+			if updated, err := d.applyPartialAdmission(ctx, log, handle, object, queueUnit); updated || err != nil {
+				return ctrl.Result{Requeue: true}, err
+			}
 			d.eventRecorder.Event(object, corev1.EventTypeNormal, "Resume", "Job is resumed by job-extension")
 			log.V(1).Info("resume generic job due to related queueunit schedSucceed")
 			return ctrl.Result{RequeueAfter: handle.runningTimeout}, handle.genericJobExtension.Resume(ctx, object, d.client)
 		}
 		if queueUnit.Status.Phase == v1alpha1.Dequeued {
+			if updated, err := d.applyPartialAdmission(ctx, log, handle, object, queueUnit); updated || err != nil {
+				return ctrl.Result{Requeue: true}, err
+			}
 			log.V(1).Info("resume generic job due to related queueunit dequeued")
 			return ctrl.Result{RequeueAfter: handle.runningTimeout}, handle.genericJobExtension.Resume(ctx, object, d.client)
 		}
