@@ -155,6 +155,9 @@ func updateQueueUnitStatus(queueUnitCp *v1alpha1.QueueUnit, enableStrictDequeueM
 		queueUnitCp.Status.Phase = v1alpha1.Backoff
 		queueUnitCp.Status.LastUpdateTime = &now
 		queueUnitCp.Status.Message = "admission check failed"
+		// Count the attempt so repeated check failures back off progressively. There is no
+		// per-queue backoff time here, so the shared default is used as the base.
+		utils.RecordQueueUnitRequeueState(&queueUnitCp.Status, 0, now.Time)
 		needUpdate = true
 	} else if state == StateReady && !enableStrictDequeueMode {
 		queueUnitCp.Status.Phase = v1alpha1.Dequeued
