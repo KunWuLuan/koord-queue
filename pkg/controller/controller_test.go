@@ -307,7 +307,7 @@ func (m *mockedQueueUnitsProvider) GetQueueUnitQuotaName(*v1alpha1.QueueUnit) ([
 func TestGetQueueUnitsByQuota(t *testing.T) {
 	// Create test objects
 	fw, _, versionedclient := NewFrameworkForTesting(fr.Registry{
-		"mockedQueueUnitsProvider": func(configuration runtime.Object, handle framework.Handle) (framework.Plugin, error) {
+		elasticquotav1alpha1.Name: func(configuration runtime.Object, handle framework.Handle) (framework.Plugin, error) {
 			return &mockedQueueUnitsProvider{}, nil
 		},
 	})
