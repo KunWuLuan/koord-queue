@@ -23,6 +23,7 @@ import (
 	"github.com/koordinator-sh/koord-queue/pkg/scheduler"
 	apiv1alpha1 "github.com/koordinator-sh/koord-queue/pkg/visibility/apis/v1alpha1"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -171,7 +172,7 @@ func TestGetQueueUnitsByQueue(t *testing.T) {
 	queueInformer := queueUnitInformerFactory.Scheduling().V1alpha1().Queues().Informer()
 
 	multiSchedulingQueue, _ := multischedulingqueue.NewMultiSchedulingQueue(fw,
-			0, 0, queueUnitLister, false, nil)
+		0, 0, queueUnitLister, false, nil)
 	controller.SetMultiSchedulingQueue(multiSchedulingQueue)
 	controller.queueUnitLister = queueUnitLister
 
@@ -374,7 +375,7 @@ func TestGetQueueUnitsByQuota(t *testing.T) {
 	// The informer has to observe both creations before the lister can return them. Waiting a
 	// fixed 20ms was enough locally but not on a loaded CI runner, where the lister came back
 	// empty and the assertions below panicked on an empty slice.
-	assert.Eventually(t, func() bool {
+	require.Eventually(t, func() bool {
 		units = controller.GetQueueUnitsByQuota(quotaName, &apiv1alpha1.QueueUnitOptions{
 			Phase: string(v1alpha1.Enqueued),
 		})
